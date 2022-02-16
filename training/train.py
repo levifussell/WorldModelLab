@@ -17,10 +17,17 @@ DEFAULT_TRAIN_ARGS = {
     'epochs'                    : 100000,
     'max_buffer_size'           : 512 * 1024,
 
+        # env.
+
+    'env_steps_per_train'       : 4096,
+
         # world model.
 
     'wm_lr'                     : 1e-3,
     'wm_max_grad_norm'          : 10.0,
+
+    'wm_train_samples'          : 4096,
+    'wm_minibatch'              : 512,
 
     'wm_hid_units'              : 1024,
     'wm_hid_layers'             : 3,
@@ -30,6 +37,9 @@ DEFAULT_TRAIN_ARGS = {
 
     'po_lr'                     : 1e-4,
     'po_max_grad_norm'          : 10.0,
+
+    'po_train_samples'          : 4096,
+    'po_minibatch'              : 512,
 
     'po_hid_units'              : 1024,
     'po_hid_layers'             : 3,
@@ -44,10 +54,6 @@ class TrainArgs:
             self.__setattr__(k, args_dict[k])
 
 def train_step(
-
-    fn_pre_process_state        : Callable,
-    fn_post_process_state       : Callable,
-    fn_post_process_action      : Callable,
 
     env_collector               : EnvCollector,
 
@@ -80,32 +86,40 @@ def train_step(
     :param train_args:  object for storing the training arguments.
     """
 
-    """COLLECT SAMPLES FROM BUFFER."""
-
-    samples = env_collector.sample_buffer()
-
-    batches = None # somehow get these from the samples.
-
     stats = {
-        'wm_loss_avg' : [],
-        'po_loss_avg' : [],
+        'wm_loss_avg'           : [],
+        'wm_grad_norm_avg'      : [],
+
+        'po_loss_avg'           : [],
+        'po_grad_norm_avg'      : [],
     }
+
+    """Env Collector Pre-stuff"""
+
+    if not env_collector.is_parallel:
+        env_collector.collect(train_args.env_steps_per_train)
 
     """Train World Model."""
 
-    for Bg in batches:
+        # collect buffer samples.
 
-        # Bg : (N, T, F) where N = batch size, T = time window, F = features
+    samples_iterator = env_collector.sample_buffer(
+                            nsamples=train_args.wm_train_samples,
+                            batchsize=train_args.wm_minibatch,
+                            window_size=train_args.wm_window)
+
+    for (B_state, B_act, B_goal) in samples_iterator:
+
+        # B_* : (N, T, F) where N = batch size, T = time window, F = features
 
         world_model_opt.zero_grad()
-        policy_opt.zero_grad()
 
             # get world model predictions.
-        Wg = world_model(
-                Bg,
-                fn_pre_process_state,
-                fn_post_process_state)
 
+        W_pred_state = world_model(
+                state_start=B_state[:,:1],
+                actions=B_act,
+                )
 
             # train the world model.
         
@@ -115,53 +129,80 @@ def train_step(
 
             pass # TODO.
 
-        wm_loss = wm_loss(Wg, Bg[:,:-1])
+        wm_loss = wm_loss(W_pred_state, B_state)
 
         wm_loss.backward()
 
         if train_args.wm_max_grad_norm > 0:
 
-            nn.utils.clip_grad_norm_(
+            wm_grad = nn.utils.clip_grad_norm_(
                 world_model.parameters(),
                 max_norm=train_args.wm_max_grad_norm
             )
 
+            stats['wm_grad_norm'].append(wm_grad)
+
         world_model_opt.step()
+
+            # compile stats.
+
+        stats['wm_loss_avg'].append(po_loss.item())
 
 
     """Train Policy."""
 
-    for Bg in batches:
+        # collect buffer samples.
 
-        # Bg : (N, T, F) where N = batch size, T = time window, F = features
+    samples_iterator = env_collector.sample_buffer(
+                            nsamples=train_args.po_train_samples,
+                            batchsize=train_args.po_minibatch,
+                            window_size=train_args.po_window)
 
-        Pg = policy(
-                Bg, 
-                world_model, 
-                fn_pre_process_state,
-                fn_post_process_state,
-                fn_post_process_action,
+    for (B_state, B_act, B_goal) in samples_iterator:
+
+        # B_* : (N, T, F) where N = batch size, T = time window, F = features
+
+        world_model_opt.zero_grad()
+        policy_opt.zero_grad()
+
+        P_state, P_action = policy.forward_env(
+                state_start=B_state[:,:1], 
+                goals=B_goal,
+                env=world_model, 
         )
 
             # train the policy.
 
-        po_loss = -1.0 * reward_func(Pg)
+        po_loss = -1.0 * reward_func(
+                            state=P_state, 
+                            goal=B_goal,
+                            act=P_action,
+                            )
 
         po_loss.backward()
 
         if train_args.po_max_grad_norm > 0:
 
-            nn.utils.clip_grad_norm_(
+            po_grad = nn.utils.clip_grad_norm_(
                 policy.parameters(),
                 max_norm=train_args.po_max_grad_norm
             )
 
+            stats['po_grad_norm'].append(po_grad)
+
         policy_opt.step()
 
-        """Compile Stats."""
+            # compile stats.
 
-        stats['wm_loss_avg'].append(po_loss.item())
         stats['po_loss_avg'].append(wm_loss.item())
+
+
+    """Copy Policy"""
+
+        # move the most recently trained policy to the gym.
+
+    env_collector.copy_current_policy(policy)
+
 
     """Compute Stats"""
 
