@@ -115,6 +115,7 @@ class EnvCollector:
                 
                 state, goal, done, info = self.env.step(act)
 
+                # TODO: environment specific. Check the environment termination behaviour.
                 if done and len(states) >= self.min_env_steps:
                     break
 
