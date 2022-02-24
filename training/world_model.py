@@ -31,19 +31,19 @@ class WorldModel(nn.Module):
 
         window = actions.shape[1]
 
-        pre_state_start = self.fn_pre_process_batch(state_start)
+        pre_state_start = self.fn_pre_process_state(state_start)
 
         x = torch.cat([pre_state_start, actions[:,0]], dim=-1)
 
-        pred_states = [self.fn_post_process_batch(self.model(x))]
+        pred_states = [self.fn_post_process_state(self.model(x))]
 
         for i in range(1, window):
             
-            pre_state_pred = self.fn_pre_process_batch(pred_states[-1])
+            pre_state_pred = self.fn_pre_process_state(pred_states[-1])
 
             x = torch.cat([pre_state_pred, actions[:, i:i+1]], dim=-1)
 
-            pred_states.append(self.fn_post_process_batch(self.model(x)))
+            pred_states.append(self.fn_post_process_state(self.model(x)))
 
         pred_states = torch.cat(pred_states, axis=1)
 

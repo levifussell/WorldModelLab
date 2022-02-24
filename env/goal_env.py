@@ -1,50 +1,123 @@
+from typing import Callable, OrderedDict, Union, Tuple
+
 import numpy as np
+import torch
 
 from abc import ABC, abstractmethod
 
 class GoalEnv(ABC):
     """
     Abstract class.
-    Wraps the gym env to allow for a 'goal' channel.
+    Wraps the env to allow for a 'goal' channel.
     """
 
     def __init__(
         self,
         env_gym,
-        ):
+        ) -> None:
 
-        self.env_gym = env_gym
+        self._env_gym = env_gym
 
     @abstractmethod
-    def _split_state_for_goal(
+    def get_curr_global_state_and_goal(
             self,
-            state,
-            ):
+            ) -> Tuple[np.array, np.array]:
         """
-        Splits the OpenAI Gym state into a 'state' and a 'goal'
-        component.
+        Computes the global state and global goal of the environment.
 
-        :param state: gym state.
+        :return: a tuple of the state and goal.
         """
-        # raise Exception("Not implemented.")
-        ...
+        pass
+
+    @abstractmethod
+    def preprocess_state_for_world_model(
+            self, 
+            state: Union[np.array, torch.tensor]
+            ) -> np.array:
+        """
+        Converts the global state into a local state for the world model.
+
+        :param state: global state.
+        :return: local world model state.
+        """
+        pass
+
+    @abstractmethod
+    def postprocess_state_for_world_model(
+            self, 
+            state: Union[np.array, torch.tensor]
+            ) -> np.array:
+        """
+        Converts the local state from the world model into the global state.
+
+        :param state: local world model state.
+        :return: global state.
+        """
+        pass
+
+    @abstractmethod
+    def preprocess_state_and_goal_for_policy(
+            self,
+            state: Union[np.array, torch.tensor],
+            goal: Union[np.array, torch.tensor],
+            ) -> np.array:
+        """
+        Converts the global state and goal into a local input state for
+            the policy.
+
+        :param state: global state.
+        :param goal: global goal.
+        :return: local input state for the policy.
+        """
+        pass
 
     @abstractmethod
     def reward(
             self,
-            state,
-            goal,
-            act,
-            ):
+            state: np.array,
+            goal: np.array,
+            act: np.array,
+            ) -> float:
         """
         Computes the reward given the state, goal, and action.
         """
-        # raise Exception("Not implemented.")
-        ...
+        pass
+
+    @abstractmethod
+    def step(
+            self,
+            act: np.array,
+            ):
+        """
+        Takes a step in the environment.
+
+        :param act: action.
+        """
+        pass
+
+class ControlSuiteGoalEnv(GoalEnv):
+    """
+    Abstract class.
+    Wraps the DeepMind Control Suite gyms.
+    """
+
+    def __init__(
+            self,
+            task_build_func: Callable,
+            ) -> None:
+        super().__init__(env_gym=task_build_func())
+
+        self._physics = self._env_gym._physics
+        self._task = self._env_gym.task
+
+        self._env_gym._flat_observation = False  
+
+    def action_spec(self):
+        return self._env_gym.action_spec()
 
     def step(
             self,
-            act,
+            act: np.array,
             ):
         """
         Takes a step in the environment.
@@ -52,22 +125,10 @@ class GoalEnv(ABC):
         :param act: gym action.
         """
 
-        state, _, done, info = self.env_gym.step(act) # NOTE: '_' is reward, but we don't care about it.
-        new_state, goal = self._split_state_for_goal(state)
+        timestep = self._env_gym.step(act) 
 
-        return new_state, goal, done, info
+        done = timestep.last()
 
+        global_state, global_goal = self._get_global_state_and_goal()
 
-# NOTE:
-#   The below isn't possible, unless the environment has
-#       a 'compute reward' method built-in.
-#       OpenAI Gyms don't. Not sure about DeepMind Control Suite.
-# class IdentityGoalEnv(GoalEnv):
-#     """
-#     Turns any gym into a GoalEnv, assumes the goal channel is empty.
-#     """
-
-#     def _split_state_for_goal(self, state):
-#         return state, np.array([])
-
-#     def reward():
+        return global_state, global_goal, done

@@ -10,14 +10,12 @@ class Policy(nn.Module):
             state_size : int,
             action_size : int,
             hid_layers : list,
-            fn_pre_process_state : Callable,
-            fn_post_process_state : Callable,
+            fn_combine_state_and_goal : Callable,
             fn_post_process_action : Callable,
             ) -> None:
         super(self, Policy).__init__()
 
-        self.fn_pre_process_sate = fn_pre_process_state
-        self.fn_post_process_sate = fn_post_process_state
+        self.fn_combine_state_and_goal = fn_combine_state_and_goal
         self.fn_post_process_action = fn_post_process_action
 
         self.model = None # TODO.
@@ -35,24 +33,22 @@ class Policy(nn.Module):
         :return: action batch.
         """
 
-        pre_state = self.fn_pre_process_sate(state)
-        # TODO: might need to pre-process goal.
-        x = torch.cat([pre_state, goal], dim=-1)
+        x = self.fn_combine_state_and_goal(state, goal)
         pre_act = self.model(x)
         return self.fn_post_process_action(pre_act)
 
-    def forward_env(
+    def forward_world_model(
             self,
             state_start : torch.tensor, 
             goals : torch.tensor,
-            env : Callable, 
+            world_model : Callable, 
             ) -> Tuple[torch.tensor, torch.tensor]:
         """
-        Compute the policy predictions through an environment for a certain rollout length (window).
+        Compute the policy predictions through a world model for a certain rollout length (window).
 
         :param state_start: batch of start states (N, F) N = batch size, F = num features.
         :param goals: batch of goals (N, W, F) N = batch size, W = window, F = num features.
-        :param env: environment to step through.
+        :param world_model: world_model to step through.
         :return: [predicted state tensor, actions tensor]
         """
 
@@ -60,7 +56,7 @@ class Policy(nn.Module):
 
         act = self.forward(state_start, goals[:,:1])
 
-        state_next = env(state_start, act)
+        state_next = world_model(state_start, act)
 
         pred_states = [state_next(state_next)]
         pred_actions = [act]
@@ -70,7 +66,7 @@ class Policy(nn.Module):
             state_curr = pred_states[-1]
             act = self.forward(state_curr, goals[:, i:i+1])
 
-            state_next = env(state_curr, act)
+            state_next = world_model(state_curr, act)
 
             pred_states.append(state_next)
             pred_actions.appned(act)

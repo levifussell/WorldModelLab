@@ -70,10 +70,6 @@ def train_step(
     """
     Performs training step of the policy and world model.
 
-    :param fn_pre_process_state:    convert state from global to local.
-    :param fn_post_process_state:   convert state from local to global.
-    :param fn_post_process_action:  convert action output of policy.
-
     :param env_collector:   interface for sampling buffer.
 
     :param policy:  policy model.
@@ -195,13 +191,6 @@ def train_step(
             # compile stats.
 
         stats['po_loss_avg'].append(wm_loss.item())
-
-
-    """Copy Policy"""
-
-        # move the most recently trained policy to the gym.
-
-    env_collector.copy_current_policy(policy)
 
 
     """Compute Stats"""
