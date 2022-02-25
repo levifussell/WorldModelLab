@@ -3,7 +3,7 @@ from typing import Callable, OrderedDict, Union, Tuple
 import numpy as np
 import torch
 
-from abc import ABC, abstractmethod
+from abc import ABC, abstractclassmethod, abstractmethod
 
 class GoalEnv(ABC):
     """
@@ -92,6 +92,16 @@ class GoalEnv(ABC):
         Takes a step in the environment.
 
         :param act: action.
+        :return: env timestep.
+        """
+        pass
+
+    @abstractmethod
+    def reset(self):
+        """
+        Resets the environment.
+
+        :return: env timestep.
         """
         pass
 
@@ -112,23 +122,55 @@ class ControlSuiteGoalEnv(GoalEnv):
 
         self._env_gym._flat_observation = False  
 
-    def action_spec(self):
-        return self._env_gym.action_spec()
+    @property
+    def action_size(self):
+        return self._env_gym.action_spec().shape[-1]
+
+    @property
+    def action_min(self):
+        return self._env_gym.action_spec().minimum
+
+    @property
+    def action_max(self):
+        return self._env_gym.action_spec().maximum
+
+    @property
+    def state_size(self):
+        state, goal = self.get_curr_global_state_and_goal()
+        return state.shape[-1]
+
+    @property
+    def goal_size(self):
+        state, goal = self.get_curr_global_state_and_goal()
+        return goal.shape[-1]
+
+    @property
+    def policy_input_size(self):
+        state, goal = self.get_curr_global_state_and_goal()
+        policy_input = self.preprocess_state_and_goal_for_policy(state, goal)
+        return policy_input.shape[-1]
 
     def step(
             self,
             act: np.array,
             ):
-        """
-        Takes a step in the environment.
-
-        :param act: gym action.
-        """
 
         timestep = self._env_gym.step(act) 
 
         done = timestep.last()
 
-        global_state, global_goal = self._get_global_state_and_goal()
+        global_state, global_goal = self.get_curr_global_state_and_goal()
 
-        return global_state, global_goal, done
+        info = {}
+
+        return global_state, global_goal, done, info
+
+    def reset(self):
+
+        timestep = self._env_gym.reset()
+
+        # done = timestep.last()
+
+        global_state, global_goal = self.get_curr_global_state_and_goal()
+
+        return global_state, global_goal #, done

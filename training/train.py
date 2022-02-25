@@ -6,20 +6,22 @@ import torch.optim as opt
 
 from typing import Callable
 
-from env_collector import EnvCollector
-from policy import Policy
-from world_model import WorldModel
+from .env_collector import EnvCollector
+from .policy import Policy
+from .world_model import WorldModel
 
 DEFAULT_TRAIN_ARGS = {
 
         # general.
 
+    'device'                    : 'cuda',
+    'logdir'                    : 'logs',
     'epochs'                    : 100000,
-    'max_buffer_size'           : 512 * 1024,
+    'max_buffer_size'           : 4096*2,
 
         # env.
 
-    'env_steps_per_train'       : 4096,
+    'env_steps_per_train'       : 8192,
 
         # world model.
 
@@ -29,8 +31,8 @@ DEFAULT_TRAIN_ARGS = {
     'wm_train_samples'          : 4096,
     'wm_minibatch'              : 512,
 
-    'wm_hid_units'              : 1024,
-    'wm_hid_layers'             : 3,
+    'wm_hid_units'              : 256,
+    'wm_hid_layers'             : 1,
     'wm_window'                 : 8,
 
         # policy.
@@ -41,8 +43,8 @@ DEFAULT_TRAIN_ARGS = {
     'po_train_samples'          : 4096,
     'po_minibatch'              : 512,
 
-    'po_hid_units'              : 1024,
-    'po_hid_layers'             : 3,
+    'po_hid_units'              : 256,
+    'po_hid_layers'             : 1,
     'po_window'                 : 32,
 
 }
@@ -90,11 +92,6 @@ def train_step(
         'po_grad_norm_avg'      : [],
     }
 
-    """Env Collector Pre-stuff"""
-
-    if not env_collector.is_parallel:
-        env_collector.collect(train_args.env_steps_per_train)
-
     """Train World Model."""
 
         # collect buffer samples.
@@ -113,8 +110,8 @@ def train_step(
             # get world model predictions.
 
         W_pred_state = world_model(
-                state_start=B_state[:,:1],
-                actions=B_act,
+                state_start=B_state[:,0],
+                actions=B_act[:,:-1],
                 )
 
             # train the world model.
@@ -123,9 +120,9 @@ def train_step(
 
             assert W_pred.shape == W_targ.shape
 
-            pass # TODO.
+            return torch.mean(torch.sum(torch.abs(W_pred - W_targ), dim=-1))
 
-        wm_loss = wm_loss(W_pred_state, B_state)
+        wm_loss = wm_loss(W_pred_state, B_state[:,1:])
 
         wm_loss.backward()
 
@@ -136,13 +133,13 @@ def train_step(
                 max_norm=train_args.wm_max_grad_norm
             )
 
-            stats['wm_grad_norm'].append(wm_grad)
+            stats['wm_grad_norm_avg'].append(wm_grad.cpu().item())
 
         world_model_opt.step()
 
             # compile stats.
 
-        stats['wm_loss_avg'].append(po_loss.item())
+        stats['wm_loss_avg'].append(wm_loss.cpu().item())
 
 
     """Train Policy."""
@@ -161,19 +158,23 @@ def train_step(
         world_model_opt.zero_grad()
         policy_opt.zero_grad()
 
-        P_state, P_action = policy.forward_env(
-                state_start=B_state[:,:1], 
+        P_state, P_action = policy.forward_world_model(
+                state_start=B_state[:,0], 
                 goals=B_goal,
-                env=world_model, 
+                world_model=world_model, 
         )
 
             # train the policy.
 
-        po_loss = -1.0 * reward_func(
-                            state=P_state, 
-                            goal=B_goal,
-                            act=P_action,
+        rew_batch_size = np.prod(P_state.shape[:2])
+
+        po_rewards = reward_func(
+                            state=P_state.view(rew_batch_size, -1), 
+                            goal=B_goal.view(rew_batch_size, -1),
+                            act=P_action.view(rew_batch_size, -1),
                             )
+
+        po_loss = -1.0 * torch.mean(po_rewards)
 
         po_loss.backward()
 
@@ -184,13 +185,13 @@ def train_step(
                 max_norm=train_args.po_max_grad_norm
             )
 
-            stats['po_grad_norm'].append(po_grad)
+            stats['po_grad_norm_avg'].append(po_grad.cpu().item())
 
         policy_opt.step()
 
             # compile stats.
 
-        stats['po_loss_avg'].append(wm_loss.item())
+        stats['po_loss_avg'].append(wm_loss.cpu().item())
 
 
     """Compute Stats"""

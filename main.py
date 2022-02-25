@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as opt
+from torchsummary import summary
 
 from training.policy import Policy
 from training.world_model import WorldModel
@@ -8,7 +9,7 @@ from training.env_collector import EnvCollector
 from training.buffer import Buffer
 from training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
 
-from env.goal_env import IdentityGoalEnv
+from env.reacher_dm_control_env import ReacherGoalEnv
 
 def run(
     train_args = DEFAULT_TRAIN_ARGS,
@@ -18,19 +19,12 @@ def run(
 
     """ Setup Environment/Gym """
 
-    env = None
+    env = ReacherGoalEnv()
 
-    state_size = None
-
-    goal_size = None
-
-    act_size = None
-
-    fn_pre_process_state = lambda x : x
-    fn_post_process_state = lambda x : x
-    fn_post_process_action = lambda x : x
-
-    reward_func = None
+    state_size = env.state_size
+    goal_size = env.goal_size
+    act_size = env.action_size
+    po_input_size = env.policy_input_size
 
     """ Build EnvCollector """
 
@@ -46,35 +40,41 @@ def run(
                         buffer=buffer,
                         min_env_steps=max(train_args.wm_window, train_args.po_window),
                         is_parallel=False, # TODO: True for multiprocessing
+                        collect_device='cpu',
+                        train_device=train_args.device
                         )
 
     """ Build Policy """
 
     policy = Policy(
-                state_size=state_size,
+                input_size=po_input_size,
                 action_size=act_size,
                 hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
-                fn_pre_process_state=fn_pre_process_state,
-                fn_post_process_state=fn_post_process_state,
-                fn_post_process_action=fn_post_process_action,
-                )
+                fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
+                fn_post_process_action=lambda x : x,
+                ).to(train_args.device)
 
     policy_opt = opt.RAdam(
-                    parameters=policy.parameters(), 
+                    params=policy.parameters(), 
                     lr=train_args.po_lr)
+
+    summary(policy, input_size=[(state_size,), (goal_size,)])
 
     """ Build World Model"""
 
     world_model = WorldModel(
                 state_size=state_size,
+                action_size=act_size,
                 hid_layers=[train_args.wm_hid_units] * train_args.wm_hid_layers,
-                fn_pre_process_state=fn_pre_process_state,
-                fn_post_process_state=fn_post_process_state,
-                )
+                fn_pre_process_state=env.preprocess_state_for_world_model,
+                fn_post_process_state=env.postprocess_state_for_world_model,
+                ).to(train_args.device)
 
     world_model_opt = opt.RAdam(
-                    parameters=world_model.parameters(), 
+                    params=world_model.parameters(), 
                     lr=train_args.wm_lr)
+
+    summary(world_model, input_size=[(state_size,), (act_size,)])
 
     """ Train Loop """
 
@@ -83,7 +83,19 @@ def run(
         # start the gym process.
     # env_collector.start_gym_process()
 
-    for e in train_args.epochs:
+    for e in range(train_args.epochs):
+
+        # collect environment.
+
+        if not env_collector.is_parallel:
+            n_steps = env_collector.collect(train_args.env_steps_per_train)
+
+            print(f"COLLECTED {n_steps} STEPS")
+            print(f"BUFFER {env_collector.buffer.percent_filled}\% FILLED")
+
+        env_collector.sample_buffer(2048, 256, 4)
+
+        # train.
 
         result = train_step(
             env_collector=env_collector,
@@ -91,15 +103,17 @@ def run(
             policy_opt=policy_opt,
             world_model=world_model,
             world_model_opt=world_model_opt,
-            reward_func=reward_func,
+            reward_func=env.reward,
             train_args=train_args,
             )
 
-        # move the most recently trained policy to the gym.
+        # copy policy to environment.
 
         env_collector.copy_current_policy(policy)
 
         # TODO: some logging here.
+
+        print(f"EPOCH {e}: po-loss = {result['po_loss_avg']}, wm-loss = {result['wm_loss_avg']}")
 
 if __name__ == "__main__":
 

@@ -11,53 +11,49 @@ class Buffer:
             state_size: int,
             act_size: int,
             goal_size: int,
-            max_len):
+            max_len: int):
         
         self._max_len = max_len
 
-        self.data = {
-            'state'         : None,
-            'act'           : None,
-            'goal'          : None,
-            'end_index'     : None,
-        }
+        self.state = None
+        self.act = None
+        self.goal = None
+        self.end_index = None
 
     def __len__(self):
         return self._max_len
 
-    def __getattribute__(self, __name: str) -> Any:
-
-        if __name in self.data.keys():
-            return self.data[__name]
-
-        return None
-
+    @property
     def curr_size(self):
-        return self.shape[0]
+        return self.state.shape[0] if self.state is not None else 0
+
+    @property
+    def percent_filled(self):
+        return float(self.curr_size) / float(len(self))
 
     def add(
             self,
-            state : np.array,
-            goal : np.array,
-            act : np.array,
+            state : torch.tensor,
+            goal : torch.tensor,
+            act : torch.tensor,
             ):
 
-        assert state.shape[0] == act.shape[0] and state.shape[0] == goal.state[0]
+        assert state.shape[0] == act.shape[0] and state.shape[0] == goal.shape[0]
 
-        if self.state == None:
+        if self.state is None:
 
-            self.state = np.copy(state)
-            self.goal = np.copy(goal)
-            self.act = np.copy(act)
+            self.state = torch.clone(state)
+            self.goal = torch.clone(goal)
+            self.act = torch.clone(act)
 
-            self.end_index = [self.curr_size()]
+            self.end_index = [self.curr_size]
 
         else:
 
-            self.state = np.concatenate([self.state, state], axis=0)
-            self.goal = np.concatenate([self.goal, goal], axis=0)
-            self.act = np.concatenate([self.act, act], axis=0)
-            self.end_index.append(self.curr_size())
+            self.state = torch.cat([self.state, state], dim=0)
+            self.goal = torch.cat([self.goal, goal], dim=0)
+            self.act = torch.cat([self.act, act], dim=0)
+            self.end_index.append(self.curr_size)
 
             while self.end_index[-1] > self._max_len:
 
@@ -68,7 +64,7 @@ class Buffer:
                 self.act = self.act[oldest_index:]
 
                 self.end_index = self.end_index[1:]
-                for i in range(self.end_index):
+                for i in range(len(self.end_index)):
                     self.end_index[i] -= oldest_index
 
     def sample(
@@ -96,13 +92,13 @@ class Buffer:
 
         for s in selected_indices:
 
-            sample_state.append(self.state[s:s+window_size][:,np.newaxis])
-            sample_goal.append(self.goal[s:s+window_size][:,np.newaxis])
-            sample_act.append(self.act[s:s+window_size][:,np.newaxis])
+            sample_state.append(self.state[s:s+window_size].unsqueeze(0))
+            sample_goal.append(self.goal[s:s+window_size].unsqueeze(0))
+            sample_act.append(self.act[s:s+window_size].unsqueeze(0))
 
-        sample_state = np.concatenate(sample_state, axis=1)
-        sample_goal = np.concatenate(sample_goal, axis=1)
-        sample_act = np.concatenate(sample_act, axis=1)
+        sample_state = torch.cat(sample_state, axis=0)
+        sample_goal = torch.cat(sample_goal, axis=0)
+        sample_act = torch.cat(sample_act, axis=0)
 
         assert sample_state.shape[0] == nsamples
         assert sample_state.shape[1] == window_size

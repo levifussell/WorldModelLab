@@ -5,7 +5,7 @@ from typing import OrderedDict, Tuple, Union
 import numpy as np
 import torch
 
-from goal_env import ControlSuiteGoalEnv
+from .goal_env import ControlSuiteGoalEnv
 
 from dm_control import mujoco
 from dm_control.rl import control
@@ -80,17 +80,19 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
             act: Union[np.array, torch.tensor],
             ) -> float:
 
-        finger_pos = state[:2]
+        finger_pos = state[...,:2]
         radii = self._physics.named.model.geom_size[['target', 'finger'], 0].sum()
 
         if isinstance(state, torch.Tensor):
 
-            finger_to_target_dist = np.linalg.norm(goal[:2] - finger_pos)
-            return (finger_to_target_dist <= radii).float()
+            finger_to_target_dist = torch.norm(goal[...,:2] - finger_pos, p=2, dim=-1)
+            # return (finger_to_target_dist e= radii).float()
+            return torch.clamp(finger_to_target_dist, min=0, max=radii) / radii
+
 
         elif isinstance(state, np.ndarray):
 
-            finger_to_target_dist = np.linalg.norm(goal[:2] - finger_pos)
+            finger_to_target_dist = np.linalg.norm(goal[...,:2] - finger_pos, axis=-1)
             return rewards.tolerance(finger_to_target_dist, (0, radii))
 
         else:
@@ -102,11 +104,14 @@ if __name__ == "__main__":
 
     env = ReacherGoalEnv()
 
-    act_spec = env.action_spec()
+    act_size = env.action_size
+    act_min = env.action_min
+    act_max = env.action_max
 
     def policy(timestep):
 
-        action = np.random.uniform(act_spec.minimum, act_spec.maximum, act_spec.shape)
+        # action = np.random.uniform(act_spec.minimum, act_spec.maximum, act_spec.shape)
+        action = torch.rand(act_size) * (act_max - act_min) + act_min
 
         curr_state, curr_goal = env.get_curr_global_state_and_goal()
         reward = env.reward(curr_state, curr_goal, action)
