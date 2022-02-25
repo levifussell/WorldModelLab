@@ -15,9 +15,9 @@ DEFAULT_TRAIN_ARGS = {
         # general.
 
     'device'                    : 'cuda',
-    'logdir'                    : 'logs',
+    'logdir'                    : 'runs/',
     'epochs'                    : 100000,
-    'max_buffer_size'           : 4096*2,
+    'max_buffer_size'           : 4096*32,
 
         # env.
 
@@ -25,27 +25,30 @@ DEFAULT_TRAIN_ARGS = {
 
         # world model.
 
-    'wm_lr'                     : 1e-3,
+    'wm_lr'                     : 1e-4,
     'wm_max_grad_norm'          : 10.0,
 
     'wm_train_samples'          : 4096,
-    'wm_minibatch'              : 512,
+    'wm_minibatch'              : 256,
 
-    'wm_hid_units'              : 256,
-    'wm_hid_layers'             : 1,
-    'wm_window'                 : 8,
+    'wm_hid_units'              : 512,
+    'wm_hid_layers'             : 2,
+    'wm_window'                 : 2,
 
         # policy.
 
-    'po_lr'                     : 1e-4,
+    'po_lr'                     : 1e-3,
     'po_max_grad_norm'          : 10.0,
 
-    'po_train_samples'          : 4096,
-    'po_minibatch'              : 512,
+    'po_wm_exploration'         : 0.1,
+    'po_env_exploration'        : 0.3,
 
-    'po_hid_units'              : 256,
-    'po_hid_layers'             : 1,
-    'po_window'                 : 32,
+    'po_train_samples'          : 4096,
+    'po_minibatch'              : 256,
+
+    'po_hid_units'              : 512,
+    'po_hid_layers'             : 2,
+    'po_window'                 : 8,
 
 }
 
@@ -162,7 +165,8 @@ def train_step(
                 state_start=B_state[:,0], 
                 goals=B_goal,
                 world_model=world_model, 
-        )
+                policy_noise=train_args.po_wm_exploration,
+                )
 
             # train the policy.
 
@@ -187,11 +191,11 @@ def train_step(
 
             stats['po_grad_norm_avg'].append(po_grad.cpu().item())
 
-        policy_opt.step()
+        # policy_opt.step()
 
             # compile stats.
 
-        stats['po_loss_avg'].append(wm_loss.cpu().item())
+        stats['po_loss_avg'].append(po_loss.cpu().item())
 
 
     """Compute Stats"""

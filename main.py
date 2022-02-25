@@ -1,6 +1,11 @@
+import os
+import platform
+from datetime import datetime
+
 import torch
 import torch.nn as nn
 import torch.optim as opt
+from torch.utils.tensorboard import SummaryWriter
 from torchsummary import summary
 
 from training.policy import Policy
@@ -39,10 +44,20 @@ def run(
                         env=env,
                         buffer=buffer,
                         min_env_steps=max(train_args.wm_window, train_args.po_window),
+                        exploration_std=train_args.po_env_exploration,
                         is_parallel=False, # TODO: True for multiprocessing
                         collect_device='cpu',
                         train_device=train_args.device
                         )
+
+    """ Logging """
+
+
+    date_str = datetime.now().strftime('%b%d_%H-%M-%S')
+    experiment_hash = date_str + '_' + platform.uname().node
+    log_path = os.path.join(train_args.logdir, experiment_hash)
+
+    writer = SummaryWriter(log_path)
 
     """ Build Policy """
 
@@ -83,6 +98,8 @@ def run(
         # start the gym process.
     # env_collector.start_gym_process()
 
+    best_po_loss = float('inf')
+
     for e in range(train_args.epochs):
 
         # collect environment.
@@ -92,8 +109,6 @@ def run(
 
             print(f"COLLECTED {n_steps} STEPS")
             print(f"BUFFER {env_collector.buffer.percent_filled}\% FILLED")
-
-        env_collector.sample_buffer(2048, 256, 4)
 
         # train.
 
@@ -111,9 +126,28 @@ def run(
 
         env_collector.copy_current_policy(policy)
 
-        # TODO: some logging here.
+        # LOGGING
 
         print(f"EPOCH {e}: po-loss = {result['po_loss_avg']}, wm-loss = {result['wm_loss_avg']}")
+
+        writer.add_scalar('loss/policy', result['po_loss_avg'], global_step=e)
+        writer.add_scalar('loss/world_model', result['wm_loss_avg'], global_step=e)
+
+        writer.add_scalar('grad/policy', result['po_grad_norm_avg'], global_step=e)
+        writer.add_scalar('grad/world_model', result['wm_grad_norm_avg'], global_step=e)
+
+        # SAVING
+
+        if result['po_loss_avg'] < best_po_loss:
+
+            best_po_loss = result['po_loss_avg']
+
+            filepath = os.path.join("runs", "models")
+            os.makedirs(filepath, exist_ok=True)
+
+            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_policy.pth"))
+
+            print("BEST POLICY SAVED.")
 
 if __name__ == "__main__":
 

@@ -1,11 +1,8 @@
-from re import M
-from time import time
-from tkinter import W
-from typing import OrderedDict, Tuple, Union
+from typing import Tuple, Union
 import numpy as np
 import torch
 
-from .goal_env import ControlSuiteGoalEnv
+from goal_env import ControlSuiteGoalEnv
 
 from dm_control import mujoco
 from dm_control.rl import control
@@ -87,7 +84,10 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
             finger_to_target_dist = torch.norm(goal[...,:2] - finger_pos, p=2, dim=-1)
             # return (finger_to_target_dist e= radii).float()
-            return torch.clamp(finger_to_target_dist, min=0, max=radii) / radii
+            # TODO: below is incorrect, it is a smoothed loss.
+            # return torch.clamp(finger_to_target_dist, min=0, max=radii) #/ radii
+            # return 1.0 / (finger_to_target_dist + 0.1) #/ radii
+            return torch.exp(-10.0 * finger_to_target_dist) #/ radii
 
 
         elif isinstance(state, np.ndarray):
@@ -107,6 +107,8 @@ if __name__ == "__main__":
     act_size = env.action_size
     act_min = env.action_min
     act_max = env.action_max
+
+    states = []
 
     def policy(timestep):
 
@@ -131,6 +133,11 @@ if __name__ == "__main__":
         print(f"\t REWARD = {timestep.reward}")
         print(f"\t STATE = {flat_obs}")
         print(f"\t DONE = {timestep.last()}")
+
+        states.append(policy_state[np.newaxis,:])
+
+        print(f"STATE MEAN: {np.mean(np.concatenate(states, axis=0), axis=0)}")
+        print(f"STATE STD: {np.std(np.concatenate(states, axis=0), axis=0)}")
 
         if not timestep.first():
             assert timestep.reward == reward

@@ -51,6 +51,7 @@ class Policy(nn.Module):
             state_start: torch.tensor, 
             goals: torch.tensor,
             world_model: Callable, 
+            policy_noise: float,
             ) -> Tuple[torch.tensor, torch.tensor]:
         """
         Compute the policy predictions through a world model for a certain rollout length (window).
@@ -58,6 +59,7 @@ class Policy(nn.Module):
         :param state_start: batch of start states (N, F) N = batch size, F = num features.
         :param goals: batch of goals (N, W, F) N = batch size, W = window, F = num features.
         :param world_model: world_model to step through.
+        :param policy_noise: std of guassian noise to add to the policy actions.
 
         :return: tuple of batch of predictions (N, W, F) [predicted state tensor, actions tensor]
         """
@@ -65,6 +67,7 @@ class Policy(nn.Module):
         window = goals.shape[1]
 
         act = self(state_start, goals[:,0])
+        act += torch.randn(act.shape).to(act.device) * policy_noise
 
         state_next = world_model.forward(state_start, act.unsqueeze(1)).squeeze()
 
@@ -76,6 +79,7 @@ class Policy(nn.Module):
             state_curr = pred_states[-1]
 
             act = self(state_curr, goals[:, i])
+            act += torch.randn(act.shape).to(act.device) * policy_noise
 
             state_next = world_model.forward(state_curr, act.unsqueeze(1)).squeeze()
 

@@ -14,19 +14,24 @@ class EnvCollector:
             env, 
             buffer: Buffer,
             min_env_steps: int,
+            exploration_std: float,
             collect_device: str = 'cpu',
             train_device: str = 'cuda',
             is_parallel: bool = True):
         """
         :param env: the environment to collect from.
         :param buffer: the buffer to store environment samples.
-        :param min_collection_window_size: the minimum size of the window before termination is allowed.
-        :is_parallel: whether collection happens in parallel.
+        :param min_env_steps: the minimum size of the window before termination is allowed.
+        :param exploration_std: std of the gaussian noise added to the policy.
+        :param collect_device:
+        :param train_device:
+        :param is_parallel: whether collection happens in parallel.
         """
 
         self.env = env
         self.buffer = buffer
         self.min_env_steps = min_env_steps
+        self.exploration_std = exploration_std
         self.collect_device = collect_device
         self.train_device = train_device
         self.is_parallel = is_parallel
@@ -121,6 +126,8 @@ class EnvCollector:
                                 state=state.to(self.collect_device),
                                 goal=goal.to(self.collect_device),
                                 ).cpu()
+
+                    act += torch.randn(act.shape).to(act.device) * self.exploration_std
 
                 acts.append(act)
                 
