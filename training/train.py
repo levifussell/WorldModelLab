@@ -14,7 +14,7 @@ DEFAULT_TRAIN_ARGS = {
 
         # general.
 
-    'device'                    : 'cpu',  # 'cuda',
+    'device'                    : 'cuda',
     'logdir'                    : 'runs/',
     'epochs'                    : 100000,
     'max_buffer_size'           : 4096*32,
