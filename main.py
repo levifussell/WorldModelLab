@@ -15,6 +15,7 @@ from training.buffer import Buffer
 from training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
 
 from env.reacher_dm_control_env import ReacherGoalEnv
+from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
 
 def run(
     train_args = DEFAULT_TRAIN_ARGS,
@@ -24,7 +25,8 @@ def run(
 
     """ Setup Environment/Gym """
 
-    env = ReacherGoalEnv()
+    # env = ReacherGoalEnv()
+    env = CartpoleBalanceGoalEnv()
 
     state_size = env.state_size
     goal_size = env.goal_size
@@ -51,7 +53,6 @@ def run(
                         )
 
     """ Logging """
-
 
     date_str = datetime.now().strftime('%b%d_%H-%M-%S')
     experiment_hash = date_str + '_' + platform.uname().node
