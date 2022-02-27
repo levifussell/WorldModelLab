@@ -13,12 +13,14 @@ from training.train import TrainArgs, DEFAULT_TRAIN_ARGS
 from training.policy import Policy
 
 from env.reacher_dm_control_env import ReacherGoalEnv
+from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
 
 if __name__ == "__main__":
 
     train_args = TrainArgs(DEFAULT_TRAIN_ARGS)
 
-    env = ReacherGoalEnv()
+    # env = ReacherGoalEnv()
+    env = CartpoleBalanceGoalEnv()
 
     state_size = env.state_size
     goal_size = env.goal_size

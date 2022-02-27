@@ -104,7 +104,7 @@ def train_step(
                             batchsize=train_args.wm_minibatch,
                             window_size=train_args.wm_window)
 
-    for (B_state, B_act, B_goal) in samples_iterator:
+    for (B_state, B_goal, B_act) in samples_iterator:
 
         # B_* : (N, T, F) where N = batch size, T = time window, F = features
 
@@ -154,7 +154,7 @@ def train_step(
                             batchsize=train_args.po_minibatch,
                             window_size=train_args.po_window)
 
-    for (B_state, B_act, B_goal) in samples_iterator:
+    for (B_state, B_goal, B_act) in samples_iterator:
 
         # B_* : (N, T, F) where N = batch size, T = time window, F = features
 

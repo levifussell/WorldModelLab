@@ -6,6 +6,11 @@ from dm_control import suite
 from dm_control import viewer
 from dm_control import mujoco
 
+"""
+Documentation on using the viewer
+https://github.com/deepmind/dm_control/blob/master/dm_control/viewer/README.md
+"""
+
 env = suite.load('humanoid', 'stand')
 
 spec = env.action_spec()
