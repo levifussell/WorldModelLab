@@ -2,7 +2,7 @@ from typing import Tuple, Union
 import numpy as np
 import torch
 
-from goal_env import ControlSuiteGoalEnv
+from .goal_env import ControlSuiteGoalEnv
 
 from dm_control import mujoco
 from dm_control.rl import control

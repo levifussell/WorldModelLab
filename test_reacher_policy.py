@@ -53,7 +53,7 @@ if __name__ == "__main__":
             action = policy.forward(
                         state=curr_state,
                         goal=curr_goal)
-            # action += torch.randn(action.shape) * 0.1
+            action += torch.randn(action.shape) * 0.5
             # action = torch.randn(action.shape) * 0.1
 
         reward = env.reward(curr_state, curr_goal, action)

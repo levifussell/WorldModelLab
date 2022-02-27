@@ -7,13 +7,16 @@ class Policy(nn.Module):
 
     def __init__(
             self,
-            input_size : int,
-            action_size : int,
-            hid_layers : list,
-            fn_combine_state_and_goal : Callable,
-            fn_post_process_action : Callable,
+            input_size: int,
+            action_size: int,
+            hid_layers: list,
+            fn_combine_state_and_goal: Callable,
+            fn_post_process_action: Callable,
+            final_layer_scale: float = 0.1,
             ) -> None:
         super(Policy, self).__init__()
+
+        self.action_size = action_size
 
         self.fn_combine_state_and_goal = fn_combine_state_and_goal
         self.fn_post_process_action = fn_post_process_action
@@ -27,6 +30,8 @@ class Policy(nn.Module):
             self.model.append(nn.ELU())
 
         self.model.append(nn.Linear(layers[-1], action_size))
+        self.model[-1].weight.data.mul_(final_layer_scale)
+        self.model[-1].bias.data.mul_(0.0)
 
         self.model = nn.Sequential(*self.model)
 

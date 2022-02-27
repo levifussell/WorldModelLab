@@ -4,6 +4,8 @@ import time
 import numpy as np
 import torch
 
+from utils.normalizer import Normalizer
+
 from .buffer import Buffer
 from .buffer_iterator import BufferIterator
 
@@ -35,6 +37,10 @@ class EnvCollector:
         self.collect_device = collect_device
         self.train_device = train_device
         self.is_parallel = is_parallel
+
+        self.normalizer_state = Normalizer()
+        self.normalizer_action = Normalizer()
+        self.normalizer_state_and_goal = Normalizer()
 
         self.current_policy = None
 
@@ -87,6 +93,61 @@ class EnvCollector:
             device=self.train_device,
         )
 
+    def warmup_normalizer(self, warmup_steps) -> int:
+
+        n_steps = 0
+
+        while n_steps < warmup_steps:
+
+            done = False
+
+            states = []
+            goals = []
+            acts = []
+
+            state, goal = self.env.reset()
+
+            state = torch.FloatTensor(state)
+            goal = torch.FloatTensor(goal)
+
+            states.append(state)
+
+            goals.append(goal)
+
+            while not done:
+
+                act = torch.rand(self.current_policy.action_size)
+
+                acts.append(act)
+                
+                state, goal, done, info = self.env.step(act)
+
+                state = torch.FloatTensor(state)
+                goal = torch.FloatTensor(goal)
+
+                # TODO: environment specific. Check the environment termination behaviour.
+                if done and len(states) >= self.min_env_steps:
+                    break
+
+                states.append(state)
+
+                goals.append(goal)
+
+            n_steps += len(states)
+
+        states = torch.cat([s.unsqueeze(0) for s in states], dim=0)
+        goals = torch.cat([g.unsqueeze(0) for g in goals], dim=0)
+        acts = torch.cat([a.unsqueeze(0) for a in acts], dim=0)
+
+        states_and_goals = self.env.preprocess_state_and_goal_for_policy(state=states, goal=goals)
+
+        self.normalizer_state.warmup(states)
+        # self.normalizer_goal.warmup(torch.cat([g.unsqueeze(0) for g in goals], dim=0))
+        self.normalizer_action.warmup(acts)
+        self.normalizer_state_and_goal.warmup(states_and_goals)
+
+
+
     def collect(
         self,
         min_num_steps: int,
@@ -116,7 +177,13 @@ class EnvCollector:
             goal = torch.FloatTensor(goal)
 
             states.append(state)
+            self.normalizer_state += state
+
             goals.append(goal)
+            # self.normalizer_goal += goal
+
+            state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
+            self.normalizer_state_and_goal += state_and_goal
 
             while not done:
 
@@ -130,6 +197,7 @@ class EnvCollector:
                     act += torch.randn(act.shape).to(act.device) * self.exploration_std
 
                 acts.append(act)
+                self.normalizer_action += act
                 
                 state, goal, done, info = self.env.step(act)
 
@@ -141,7 +209,13 @@ class EnvCollector:
                     break
 
                 states.append(state)
+                self.normalizer_state += state
+
                 goals.append(goal)
+                # self.normalizer_goal += goal
+
+                state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
+                self.normalizer_state_and_goal += state_and_goal
 
                 # time.sleep(0.001)
 
