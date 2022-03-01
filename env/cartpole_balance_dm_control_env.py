@@ -3,11 +3,12 @@ import numpy as np
 import torch
 
 from env.goal_env import ControlSuiteGoalEnv
+from utils import rewards
 
 from dm_control.suite.cartpole import balance as build_cartpole_balance
 from dm_control.rl import control
 from dm_control import viewer
-from dm_control.utils import rewards
+
 
 # Cartpole source code:
 # https://github.com/deepmind/dm_control/blob/4110221701c2666df21953b55e98e5c552485599/dm_control/suite/cartpole.py
@@ -92,9 +93,7 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
         """
         # TODO: Questions/Unsure about
 
-        # TODO: does not work with torch tensors? rewards.tolerance calls np.where().
-        #       for now to make things run I have ignored all these tolerance terms.
-        #       The todo is to put the tolerance terms back.
+        # TODO: test all the _sigmoids functions with torch version
 
         # TODO: Is this reward sensible/okay in the world models framework
 
@@ -112,21 +111,28 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
         upright = (pole_angle_cosine + 1) / 2  # ~ how upright is the pole
 
-        # centered = rewards.tolerance(cart_position, margin=2)
-        # centered = (1 + centered) / 2  # ~ how centered is the cart (= how close to 0 is the cart position)
-        #
-        # small_velocity = rewards.tolerance(angular_vel, margin=5).min()
-        # small_velocity = (1 + small_velocity) / 2  # ~ how still is the pole (= how close to 0 is the angular velocity)
-        #
+        centered = rewards.tolerance(cart_position, margin=2)
+        centered = (1 + centered) / 2  # ~ how centered is the cart (= how close to 0 is the cart position)
+
+        small_velocity = rewards.tolerance(angular_vel, margin=5).min()
+        small_velocity = (1 + small_velocity) / 2  # ~ how still is the pole (= how close to 0 is the angular velocity)
+
+        # TODO: in control suite they take rewards.tolerance()[0]
+        #       why do they take [0]? Check/think carefully
+        #       Could be an error as np.where can return a tuple, but when a condition is given it doesn't
+
+        # This is what is in the control suite
         # small_control = rewards.tolerance(act, margin=1,
         #                                   value_at_margin=0,
         #                                   sigmoid='quadratic')[0]
-        # small_control = (4 + small_control) / 5  # ~ how small are the necessary adjustments
-        #                                          # (= how close to 0 is the action/cart movement)
 
-        centered = 1
-        small_velocity = 1
-        small_control = 1
+        # What is wrong with this?
+        small_control = rewards.tolerance(act, margin=1,
+                                          value_at_margin=0,
+                                          sigmoid='quadratic')
+
+        small_control = (4 + small_control) / 5  # ~ how small are the necessary adjustments
+                                                 # (= how close to 0 is the action/cart movement)
 
         return upright.mean() * small_control * small_velocity * centered
 
@@ -149,6 +155,12 @@ if __name__ == "__main__":
         action = torch.rand(act_size) * (act_max - act_min) + act_min
 
         curr_state, curr_goal = env.get_curr_global_state_and_goal()
+
+        # Seems this casting is now required to make things run
+        curr_state = torch.tensor(curr_state).float()
+        curr_goal = torch.tensor(curr_goal).float()
+        action = action.float()
+
         reward = env.reward(curr_state, curr_goal, action)
 
         policy_state = env.preprocess_state_and_goal_for_policy(curr_state, curr_goal)
