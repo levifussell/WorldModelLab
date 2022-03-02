@@ -29,7 +29,7 @@ import torch
 _DEFAULT_VALUE_AT_MARGIN = 0.1
 
 
-def _sigmoids(x, value_at_1, sigmoid, device):
+def _sigmoids(x, value_at_1, sigmoid):
   """Returns 1 when `x` == 0, between 0 and 1 otherwise.
 
   Args:
@@ -98,6 +98,7 @@ def _sigmoids(x, value_at_1, sigmoid, device):
     scale = 1 - value_at_1
     scaled_x = x * scale
     if isinstance(x, torch.Tensor):
+      device = x.device
       return torch.where(torch.abs(scaled_x) < 1, 1 - scaled_x, torch.tensor(0.0).to(device))
     else:
       return np.where(abs(scaled_x) < 1, 1 - scaled_x, 0.0)
@@ -106,6 +107,7 @@ def _sigmoids(x, value_at_1, sigmoid, device):
     scale = np.sqrt(1 - value_at_1)
     scaled_x = x * scale
     if isinstance(x, torch.Tensor):
+      device = x.device
       return torch.where(torch.abs(scaled_x) < 1, 1 - scaled_x ** 2, torch.tensor(0.0).to(device))
     else:
       return np.where(abs(scaled_x) < 1, 1 - scaled_x ** 2, 0.0)
@@ -122,7 +124,7 @@ def _sigmoids(x, value_at_1, sigmoid, device):
 
 
 def tolerance(x, bounds=(0.0, 0.0), margin=0.0, sigmoid='gaussian',
-              value_at_margin=_DEFAULT_VALUE_AT_MARGIN, device='cuda'):
+              value_at_margin=_DEFAULT_VALUE_AT_MARGIN):
   """Returns 1 when `x` falls inside the bounds, between 0 and 1 otherwise.
 
   Args:
@@ -157,12 +159,13 @@ def tolerance(x, bounds=(0.0, 0.0), margin=0.0, sigmoid='gaussian',
     raise ValueError('`margin` must be non-negative.')
 
   if isinstance(x, torch.Tensor):
+    device = x.device
     in_bounds = torch.logical_and(lower <= x, x <= upper)
     if margin == 0:
       value = torch.where(in_bounds, torch.tensor(1.0).to(device), torch.tensor(0.0).to(device))
     else:
       d = torch.where(x < lower, lower - x, x - upper) / margin
-      value = torch.where(in_bounds, torch.tensor(1.0).to(device), _sigmoids(d, value_at_margin, sigmoid, device))
+      value = torch.where(in_bounds, torch.tensor(1.0).to(device), _sigmoids(d, value_at_margin, sigmoid))
 
     return value
 
