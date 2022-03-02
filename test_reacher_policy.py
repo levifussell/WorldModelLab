@@ -19,15 +19,15 @@ if __name__ == "__main__":
 
     train_args = TrainArgs(DEFAULT_TRAIN_ARGS)
 
-    # env = ReacherGoalEnv()
-    env = CartpoleBalanceGoalEnv()
+    env = ReacherGoalEnv()
+    # env = CartpoleBalanceGoalEnv()
 
     state_size = env.state_size
     goal_size = env.goal_size
     act_size = env.action_size
     po_input_size = env.policy_input_size
 
-    po_filename = "runs/models/best_policy.pth"
+    po_filename = "runs/models/best_rew_policy.pth"
 
     policy = Policy(
                 input_size=po_input_size,
@@ -55,7 +55,7 @@ if __name__ == "__main__":
             action = policy.forward(
                         state=curr_state,
                         goal=curr_goal)
-            action += torch.randn(action.shape) * 0.5
+            # action += torch.randn(action.shape) * 0.5
             # action = torch.randn(action.shape) * 0.1
 
         reward = env.reward(curr_state, curr_goal, action)

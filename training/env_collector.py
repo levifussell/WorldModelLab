@@ -9,14 +9,17 @@ from utils.normalizer import Normalizer
 from .buffer import Buffer
 from .buffer_iterator import BufferIterator
 
+from env.goal_env import GoalEnv
+
 class EnvCollector:
 
     def __init__(
             self, 
-            env, 
+            env: GoalEnv, 
             buffer: Buffer,
             min_env_steps: int,
             exploration_std: float,
+            max_env_steps: int = 0,
             collect_device: str = 'cpu',
             train_device: str = 'cuda',
             is_parallel: bool = True):
@@ -33,6 +36,7 @@ class EnvCollector:
         self.env = env
         self.buffer = buffer
         self.min_env_steps = min_env_steps
+        self.max_env_steps = max_env_steps
         self.exploration_std = exploration_std
         self.collect_device = collect_device
         self.train_device = train_device
@@ -129,6 +133,13 @@ class EnvCollector:
                 if done and len(states) >= self.min_env_steps:
                     break
 
+                # TODO: environment specific. Check the environment termination behaviour.
+                if self.max_env_steps > 0 and len(states) >= self.max_env_steps:
+                    done = True # TODO: make this a case-specific done.
+                    break
+
+                # buffer addition.
+
                 states.append(state)
 
                 goals.append(goal)
@@ -162,6 +173,7 @@ class EnvCollector:
             raise Exception("Collector is parallel. Shouldn't be doing manual collecting.")
 
         n_steps = 0
+        n_eps = 0
 
         while n_steps < min_num_steps:
 
@@ -170,6 +182,7 @@ class EnvCollector:
             states = []
             goals = []
             acts = []
+            rewards = []
 
             state, goal = self.env.reset()
 
@@ -180,7 +193,6 @@ class EnvCollector:
             self.normalizer_state += state
 
             goals.append(goal)
-            # self.normalizer_goal += goal
 
             state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
             self.normalizer_state_and_goal += state_and_goal
@@ -198,6 +210,8 @@ class EnvCollector:
 
                 acts.append(act)
                 self.normalizer_action += act
+
+                rewards.append(self.env.reward(state=state, goal=goal, act=act))
                 
                 state, goal, done, info = self.env.step(act)
 
@@ -208,16 +222,18 @@ class EnvCollector:
                 if done and len(states) >= self.min_env_steps:
                     break
 
+                # TODO: environment specific. Check the environment termination behaviour.
+                if self.max_env_steps > 0 and len(states) >= self.max_env_steps:
+                    done = True # TODO: make this a case-specific done.
+                    break
+
                 states.append(state)
                 self.normalizer_state += state
 
                 goals.append(goal)
-                # self.normalizer_goal += goal
 
                 state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
                 self.normalizer_state_and_goal += state_and_goal
-
-                # time.sleep(0.001)
 
             self.buffer.add(
                 state=torch.cat([s.unsqueeze(0) for s in states], dim=0),
@@ -226,7 +242,6 @@ class EnvCollector:
             )
 
             n_steps += len(states)
+            n_eps += 1
 
-            # time.sleep(0.001)
-
-        return n_steps
+        return n_steps, n_eps, torch.FloatTensor(rewards)

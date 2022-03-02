@@ -16,16 +16,17 @@ DEFAULT_TRAIN_ARGS = {
 
     'device'                    : 'cuda',
     'logdir'                    : 'runs/',
-    'epochs'                    : 2000, #100,
-    'max_buffer_size'           : 4096*32,
+    'epochs'                    : 5000, #100,
+    'max_buffer_size'           : 4096*32,#*3,
 
         # env.
 
     'env_steps_per_train'       : 8192,
+    'env_max_steps'             : 512,
 
         # world model.
 
-    'wm_lr'                     : 1e-3,
+    'wm_lr'                     : 1e-4,
     'wm_max_grad_norm'          : 10.0,
     'wm_max_grad_skip'          : 20.0,
 
@@ -35,6 +36,9 @@ DEFAULT_TRAIN_ARGS = {
     'wm_hid_units'              : 1024,
     'wm_hid_layers'             : 3,
     'wm_window'                 : 4,
+
+    'wm_l1_reg'                 : 0.01,
+    'wm_l2_reg'                 : 0.001,
 
         # policy.
 
@@ -50,7 +54,10 @@ DEFAULT_TRAIN_ARGS = {
 
     'po_hid_units'              : 1024,
     'po_hid_layers'             : 3,
-    'po_window'                 : 64,
+    'po_window'                 : 32,
+
+    'po_l1_reg'                 : 0.01,
+    'po_l2_reg'                 : 0.001,
 
 }
 
@@ -97,9 +104,15 @@ def train_step(
 
     stats = {
         'wm_loss_avg'           : [],
+        'wm_loss_diff_avg'      : [],
+        'wm_loss_l1_reg_avg'    : [],
+        'wm_loss_l2_reg_avg'    : [],
         'wm_grad_norm_avg'      : [],
 
         'po_loss_avg'           : [],
+        'po_loss_reward_avg'    : [],
+        'po_loss_l1_reg_avg'    : [],
+        'po_loss_l2_reg_avg'    : [],
         'po_grad_norm_avg'      : [],
     }
 
@@ -120,20 +133,26 @@ def train_step(
 
             # get world model predictions.
 
-        W_pred_state = world_model(
+        W_pred_state, W_pred_resids = world_model(
                 state_start=B_state[:,0],
                 actions=B_act[:,:-1],
                 )
 
             # train the world model.
         
-        def wm_loss(W_pred, W_targ):
+        def wm_loss(W_pred, W_targ, W_resids):
 
             assert W_pred.shape == W_targ.shape
 
-            return torch.mean(torch.sum(torch.abs(W_pred - W_targ), dim=-1))
+            diff_loss = torch.mean(torch.sum(torch.abs(W_pred - W_targ), dim=-1))
+            l1_reg_loss = train_args.wm_l1_reg * torch.mean(torch.sum(torch.abs(W_resids), dim=-1))
+            l2_reg_loss = train_args.wm_l2_reg * torch.mean(torch.sum(torch.square(W_resids), dim=-1))
 
-        wm_loss = wm_loss(W_pred_state, B_state[:,1:])
+            loss_total = diff_loss + l1_reg_loss + l2_reg_loss
+
+            return loss_total, (diff_loss, l1_reg_loss, l2_reg_loss)
+
+        wm_loss, (wm_diff_loss, wm_l1_reg_loss, wm_l2_reg_loss) = wm_loss(W_pred_state, B_state[:,1:], W_pred_resids)
 
         wm_loss.backward()
 
@@ -159,6 +178,9 @@ def train_step(
             # compile stats.
 
         stats['wm_loss_avg'].append(wm_loss.cpu().item())
+        stats['wm_loss_diff_avg'].append(wm_diff_loss.cpu().item())
+        stats['wm_loss_l1_reg_avg'].append(wm_l1_reg_loss.cpu().item())
+        stats['wm_loss_l2_reg_avg'].append(wm_l2_reg_loss.cpu().item())
 
 
     """Train Policy."""
@@ -188,13 +210,16 @@ def train_step(
 
         rew_batch_size = np.prod(P_state.shape[:2])
 
-        po_rewards = reward_func(
+        po_reward_loss = -1.0 * torch.mean(reward_func(
                             state=P_state.view(rew_batch_size, -1), 
                             goal=B_goal.view(rew_batch_size, -1),
                             act=P_action.view(rew_batch_size, -1),
-                            )
+                            ))
 
-        po_loss = -1.0 * torch.mean(po_rewards)
+        po_l1_reg_loss = train_args.po_l1_reg * torch.mean(torch.sum(torch.abs(P_action), dim=-1))
+        po_l2_reg_loss = train_args.po_l2_reg * torch.mean(torch.sum(torch.square(P_action), dim=-1))
+
+        po_loss = po_reward_loss + po_l1_reg_loss + po_l2_reg_loss
         # po_loss = -1.0 * torch.mean(torch.sum(po_rewards.reshape(P_state.shape[0], P_state.shape[1]), dim=-1))
 
         po_loss.backward()
@@ -216,11 +241,14 @@ def train_step(
         if not grad_skip:
             policy_opt.step()
         else:
-            print("POLICY GRADIENT SKIPPED.")
+            print("!! POLICY GRADIENT SKIPPED.")
 
             # compile stats.
 
         stats['po_loss_avg'].append(po_loss.cpu().item())
+        stats['po_loss_reward_avg'].append(po_reward_loss.cpu().item())
+        stats['po_loss_l1_reg_avg'].append(po_l1_reg_loss.cpu().item())
+        stats['po_loss_l2_reg_avg'].append(po_l2_reg_loss.cpu().item())
 
     """ Post Tran"""
 

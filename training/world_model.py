@@ -60,7 +60,8 @@ class WorldModel(nn.Module):
 
         x = torch.cat([pre_state_start, pre_action], dim=-1)
 
-        pred_states = [self.fn_post_process_state(state_start + self.model(x))]
+        pred_resids = [self.model(x)]
+        pred_states = [self.fn_post_process_state(state_start + pred_resids[-1])]
 
         for i in range(1, window):
             
@@ -69,8 +70,12 @@ class WorldModel(nn.Module):
 
             x = torch.cat([pre_state_pred, pre_action], dim=-1)
 
-            pred_states.append(self.fn_post_process_state(pred_states[-1] + self.model(x)))
+            pred_resids.append(self.model(x))
+            pred_states.append(self.fn_post_process_state(pred_states[-1] + pred_resids[-1]))
 
+        pred_resids = torch.cat([t.unsqueeze(1) for t in pred_resids], dim=1)
         pred_states = torch.cat([t.unsqueeze(1) for t in pred_states], dim=1)
 
-        return pred_states
+        assert pred_states.shape == pred_states.shape
+
+        return pred_states, pred_resids

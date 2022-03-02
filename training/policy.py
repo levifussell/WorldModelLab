@@ -74,7 +74,8 @@ class Policy(nn.Module):
         act = self(state_start, goals[:,0])
         act += torch.randn(act.shape).to(act.device) * policy_noise
 
-        state_next = world_model.forward(state_start, act.unsqueeze(1)).squeeze()
+        state_next, _ = world_model.forward(state_start, act.unsqueeze(1))
+        state_next = state_next.squeeze()
 
         pred_states = [state_next]
         pred_actions = [act]
@@ -86,7 +87,8 @@ class Policy(nn.Module):
             act = self(state_curr, goals[:, i])
             act += torch.randn(act.shape).to(act.device) * policy_noise
 
-            state_next = world_model.forward(state_curr, act.unsqueeze(1)).squeeze()
+            state_next, _ = world_model.forward(state_curr, act.unsqueeze(1))
+            state_next = state_next.squeeze()
 
             pred_states.append(state_next)
             pred_actions.append(act)

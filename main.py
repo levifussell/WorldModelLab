@@ -25,8 +25,8 @@ def run(
 
     """ Setup Environment/Gym """
 
-    # env = ReacherGoalEnv()
-    env = CartpoleBalanceGoalEnv()
+    env = ReacherGoalEnv()
+    # env = CartpoleBalanceGoalEnv()
 
     state_size = env.state_size
     goal_size = env.goal_size
@@ -46,6 +46,7 @@ def run(
                         env=env,
                         buffer=buffer,
                         min_env_steps=max(train_args.wm_window, train_args.po_window),
+                        max_env_steps=train_args.env_max_steps,
                         exploration_std=train_args.po_env_exploration,
                         is_parallel=False, # TODO: True for multiprocessing
                         collect_device='cpu',
@@ -122,6 +123,8 @@ def run(
         # move the policy to the gym.
     env_collector.copy_current_policy(policy)
 
+    print(f"BUFFER SIZE: {len(buffer)}")
+
     print("WARMING UP NORMALIZER...")
     env_collector.warmup_normalizer(warmup_steps=1000)
     print("...WARMUP COMPLETE.")
@@ -131,16 +134,18 @@ def run(
         # start the gym process.
     # env_collector.start_gym_process()
 
-    best_po_loss = float('inf')
+    best_po_loss = float('+inf')
+    best_avg_rew = float('-inf')
 
     for e in range(train_args.epochs):
 
         # collect environment.
 
         if not env_collector.is_parallel:
-            n_steps = env_collector.collect(train_args.env_steps_per_train)
+            n_steps, n_eps, rewards = env_collector.collect(train_args.env_steps_per_train)
 
             print(f"COLLECTED {n_steps} STEPS")
+            print(f"COLLECTED {n_eps} EPISODES")
             print(f"BUFFER {env_collector.buffer.percent_filled}\% FILLED")
 
         # train.
@@ -166,10 +171,24 @@ def run(
 
         # LOGGING
 
-        print(f"EPOCH {e}: po-loss = {result['po_loss_avg']}, wm-loss = {result['wm_loss_avg']}")
+        rew_avg = torch.mean(rewards).item()
+
+        print(f"EPOCH {e}: po-loss = {result['po_loss_avg']}, wm-loss = {result['wm_loss_avg']}, rew = {rew_avg}")
+
+        writer.add_scalar('rewards/rew_mean', rew_avg, global_step=e)
+        writer.add_scalar('rewards/rew_std', torch.std(rewards).item(), global_step=e)
+        writer.add_scalar('rewards/rew_min', torch.min(rewards).item(), global_step=e)
+        writer.add_scalar('rewards/rew_max', torch.max(rewards).item(), global_step=e)
 
         writer.add_scalar('loss/policy', result['po_loss_avg'], global_step=e)
+        writer.add_scalar('loss/policy_reward', result['po_loss_reward_avg'], global_step=e)
+        writer.add_scalar('loss/policy_l1_reg', result['po_loss_l1_reg_avg'], global_step=e)
+        writer.add_scalar('loss/policy_l2_reg', result['po_loss_l2_reg_avg'], global_step=e)
+
         writer.add_scalar('loss/world_model', result['wm_loss_avg'], global_step=e)
+        writer.add_scalar('loss/world_model_diff', result['wm_loss_diff_avg'], global_step=e)
+        writer.add_scalar('loss/world_model_l1_reg', result['wm_loss_l1_reg_avg'], global_step=e)
+        writer.add_scalar('loss/world_model_l2_reg', result['wm_loss_l2_reg_avg'], global_step=e)
 
         writer.add_scalar('grad/policy', result['po_grad_norm_avg'], global_step=e)
         writer.add_scalar('grad/world_model', result['wm_grad_norm_avg'], global_step=e)
@@ -186,7 +205,22 @@ def run(
         writer.add_scalar('inputs/act_state_and_goal_mean', env_collector.normalizer_state_and_goal.accum_mean.norm(p=2), global_step=e)
         writer.add_scalar('inputs/act_state_and_goal_std', env_collector.normalizer_state_and_goal.accum_std.norm(p=2), global_step=e)
 
+        writer.add_scalar('buffer/perc_buffer_filled', env_collector.buffer.percent_filled, global_step=e)
+        writer.add_scalar('buffer/nsteps_collected', n_steps, global_step=e)
+        writer.add_scalar('buffer/neps_collected', n_eps, global_step=e)
+
         # SAVING
+
+        if rew_avg > best_avg_rew:
+
+            best_avg_rew = rew_avg
+
+            filepath = os.path.join("runs", "models")
+            os.makedirs(filepath, exist_ok=True)
+
+            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_rew_policy.pth"))
+
+            print("## BEST REWARD POLICY SAVED.")
 
         if result['po_loss_avg'] < best_po_loss:
 
@@ -195,9 +229,9 @@ def run(
             filepath = os.path.join("runs", "models")
             os.makedirs(filepath, exist_ok=True)
 
-            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_policy.pth"))
+            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_loss_policy.pth"))
 
-            print("BEST POLICY SAVED.")
+            print("## BEST LOSS POLICY SAVED.")
 
 if __name__ == "__main__":
 

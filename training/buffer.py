@@ -29,7 +29,7 @@ class Buffer:
 
     @property
     def percent_filled(self):
-        return float(self.curr_size) / float(len(self))
+        return (float(self.curr_size) / float(len(self))) * 100
 
     def add(
             self,

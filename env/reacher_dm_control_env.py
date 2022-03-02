@@ -1,20 +1,61 @@
 from typing import Tuple, Union
+
+import os
+
 import numpy as np
 import torch
 
 from env.goal_env import ControlSuiteGoalEnv
+# from goal_env import ControlSuiteGoalEnv
+
+from dm_control.mujoco.wrapper.core import MjModel
+import dm_control.mjcf as mjcf
 
 from dm_control import mujoco
 from dm_control.rl import control
 from dm_control import suite
 from dm_control import viewer
 from dm_control.utils import rewards
-from dm_control.suite.reacher import easy as build_reacher_task
+from dm_control.suite.reacher import easy as build_reacher_task, Physics, get_model_and_assets, Reacher, _BIG_TARGET, _DEFAULT_TIME_LIMIT
+from dm_control.suite import common
+from dm_control.utils import io as resources
 
 class ReacherGoalEnv(ControlSuiteGoalEnv):
 
     def __init__(self):
+
+        # def wm_reacher(**environment_kwargs):
+        #     # physics = Physics.from_xml_string("./env/model_files/reacher.xml", common.ASSETS)
+        #     # physics = Physics.from_xml_string(common.read_model("reacher.xml"), common.ASSETS)
+        #     physics = Physics.from_xml_string(resources.GetResource(os.path.join('env', 'model_files', 'reacher.xml')), common.ASSETS)
+        #     task = Reacher(target_size=_BIG_TARGET, random=None)
+        #     environment_kwargs = environment_kwargs or {}
+        #     return control.Environment(
+        #         physics, task, time_limit=_DEFAULT_TIME_LIMIT, **environment_kwargs)
+
         super().__init__(task_build_func=build_reacher_task)
+        # super().__init__(task_build_func=wm_reacher)
+
+        # # import pdb; pdb.set_trace()
+
+        # # p = mujoco.Physics()
+        # # # p.model.
+        # # m = MjModel()
+
+        # print(os.curdir)
+
+        # mjcf_model = mjcf.from_path(os.path.join('.', 'env', 'model_files', 'reacher.xml'))
+        # arm = mjcf_model.find('body', 'arm')
+        # arm.name = 'test'
+        # # mjcf_model = mjcf.RootElement()
+        # # mjcf_model.attach(self._physics.model)
+        # # mjcf_model.
+        # # mjcf_model.worldbody.add('geom', type='cylinder', size=[0.25, 0.02], rgba=[1, 0, 0, 1])
+        # # p = mujoco.Physics()
+        # # p.model
+        # # print(self._physics.model.attach)
+
+        # import pdb; pdb.set_trace()
 
     def get_curr_global_state_and_goal(
             self,
@@ -92,8 +133,11 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
         elif isinstance(state, np.ndarray):
 
+            # finger_to_target_dist = np.linalg.norm(goal[...,:2] - finger_pos, axis=-1)
+            # return rewards.tolerance(finger_to_target_dist, (0, radii))
+            # TODO: below is incorrect.
             finger_to_target_dist = np.linalg.norm(goal[...,:2] - finger_pos, axis=-1)
-            return rewards.tolerance(finger_to_target_dist, (0, radii))
+            return np.exp(-10.0 * finger_to_target_dist) #/ radii
 
         else:
             raise Exception("Invalid state type.")
@@ -139,9 +183,9 @@ if __name__ == "__main__":
         print(f"STATE MEAN: {np.mean(np.concatenate(states, axis=0), axis=0)}")
         print(f"STATE STD: {np.std(np.concatenate(states, axis=0), axis=0)}")
 
-        if not timestep.first():
-            assert timestep.reward == reward
-        assert np.allclose(policy_state, flat_obs)
+        # if not timestep.first():
+        #     assert timestep.reward == reward
+        # assert np.allclose(policy_state, flat_obs)
 
         print("------------")
 
