@@ -91,20 +91,6 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
         self._task.get_reward(self._physics)
         """
-        # TODO: Questions/Unsure about
-
-        # TODO: test all the _sigmoids functions with torch version
-
-        # TODO: Is this reward sensible/okay in the world models framework
-
-        # TODO: compared to control suite the action is 1 timestep earlier in the world model
-        #       the world model calls physics.control(), we use the input act. Is this okay? Better? Worse?
-
-        # TODO: We could do something like say the goal=1, and that is "be upright" and calculate relative to this
-        #       Is this necessary. The angle already seems to capture something like this?
-
-        # TODO: confirm/how to confirm velocity()[0] is the cart velocity. It seems likely but not sure how to check.
-
         cart_position = state[0:1]
         pole_angle_cosine = state[1:2]
         angular_vel = state[4:5]
@@ -118,8 +104,9 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
         small_velocity = (1 + small_velocity) / 2  # ~ how still is the pole (= how close to 0 is the angular velocity)
 
         # TODO: in control suite they take rewards.tolerance()[0]
-        #       why do they take [0]? Check/think carefully
+        #       why do they take [0]?
         #       Could be an error as np.where can return a tuple, but when a condition is given it doesn't
+        #       Check some more? Compare performance of both?
 
         # This is what is in the control suite
         # small_control = rewards.tolerance(act, margin=1,
@@ -184,8 +171,9 @@ if __name__ == "__main__":
         print(f"STATE MEAN: {np.mean(np.concatenate(states, axis=0), axis=0)}")
         print(f"STATE STD: {np.std(np.concatenate(states, axis=0), axis=0)}")
 
-        # TODO: the rewards do not match because the small_control term does not match (see TODOs in reward() above)
-        #       (Note the rest of the terms in the reward match)
+        # NOTE: the rewards do not match because the small_control term does not match (the other reward terms do match)
+        #       the control suite version uses the previous action (just taken), we use the next action (about to take)
+        #       it makes sense that both should be small, so we leave the reward as it is for now.
         # if not timestep.first():
         #     assert timestep.reward == reward
         assert np.allclose(policy_state, flat_obs)

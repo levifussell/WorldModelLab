@@ -84,7 +84,7 @@ def _sigmoids(x, value_at_1, sigmoid):
 
   elif sigmoid == 'cosine':
     if isinstance(x, torch.Tensor):
-      raise NotImplementedError("To implement cosine as an option for torch, check the requisite warning")
+      raise NotImplementedError("To implement cosine as an option for torch, check the warning given in torch")
     else:
       scale = np.arccos(2 * value_at_1 - 1) / np.pi
       scaled_x = x * scale
