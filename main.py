@@ -15,19 +15,17 @@ from training.buffer import Buffer
 from training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
 
 from env.reacher_dm_control_env import ReacherGoalEnv
+from env.reacher_train_args import REACHER_TRAIN_ARGS
 from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
+from env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
 
 def run(
-    train_args = DEFAULT_TRAIN_ARGS,
+    env=None, train_args=DEFAULT_TRAIN_ARGS,
 ):
 
     train_args = TrainArgs(train_args)
 
     """ Setup Environment/Gym """
-
-    env = ReacherGoalEnv()
-    # env = CartpoleBalanceGoalEnv()
-
     state_size = env.state_size
     goal_size = env.goal_size
     act_size = env.action_size
@@ -218,7 +216,7 @@ def run(
             filepath = os.path.join("runs", "models")
             os.makedirs(filepath, exist_ok=True)
 
-            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_rew_policy.pth"))
+            torch.save(policy.state_dict(), f=os.path.join(filepath, f"best_{train_args.name}_rew_policy.pth"))
 
             print("## BEST REWARD POLICY SAVED.")
 
@@ -229,10 +227,11 @@ def run(
             filepath = os.path.join("runs", "models")
             os.makedirs(filepath, exist_ok=True)
 
-            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_loss_policy.pth"))
+            torch.save(policy.state_dict(), f=os.path.join(filepath, f"best_{train_args.name}_loss_policy.pth"))
 
             print("## BEST LOSS POLICY SAVED.")
 
 if __name__ == "__main__":
 
-    run()
+    run(ReacherGoalEnv(), REACHER_TRAIN_ARGS)
+    # run(CartpoleBalanceGoalEnv(), CARTPOLE_BALANCE_TRAIN_ARGS)

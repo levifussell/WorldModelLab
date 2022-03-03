@@ -13,13 +13,16 @@ from training.train import TrainArgs, DEFAULT_TRAIN_ARGS
 from training.policy import Policy
 
 from env.reacher_dm_control_env import ReacherGoalEnv
+from env.reacher_train_args import REACHER_TRAIN_ARGS
 from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
+from env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
 
 if __name__ == "__main__":
 
-    train_args = TrainArgs(DEFAULT_TRAIN_ARGS)
-
+    train_args = TrainArgs(REACHER_TRAIN_ARGS)
     env = ReacherGoalEnv()
+
+    # train_args = TrainArgs(CARTPOLE_BALANCE_TRAIN_ARGS)
     # env = CartpoleBalanceGoalEnv()
 
     state_size = env.state_size
@@ -27,7 +30,7 @@ if __name__ == "__main__":
     act_size = env.action_size
     po_input_size = env.policy_input_size
 
-    po_filename = "runs/models/best_rew_policy.pth"
+    po_filename = f"runs/models/best_{train_args.name}_rew_policy.pth"
 
     policy = Policy(
                 input_size=po_input_size,
