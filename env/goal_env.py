@@ -114,13 +114,20 @@ class ControlSuiteGoalEnv(GoalEnv):
     def __init__(
             self,
             task_build_func: Callable,
+            max_steps: int = -1,
             ) -> None:
+        """
+        :param max_steps: maximium environment steps, usually for testing.
+        """
         super().__init__(env_gym=task_build_func())
 
         self._physics = self._env_gym._physics
         self._task = self._env_gym.task
 
         self._env_gym._flat_observation = False  
+
+        self._max_steps = max_steps
+        self._nsteps = 0
 
     @property
     def action_size(self):
@@ -162,6 +169,11 @@ class ControlSuiteGoalEnv(GoalEnv):
         global_state, global_goal = self.get_curr_global_state_and_goal()
 
         info = {}
+
+        self._nsteps += 1
+
+        if self._max_steps > 0 and self._nsteps >= self._max_steps:
+            done = True
 
         return global_state, global_goal, done, info
 

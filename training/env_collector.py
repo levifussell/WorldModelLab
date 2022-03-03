@@ -19,6 +19,9 @@ class EnvCollector:
             buffer: Buffer,
             min_env_steps: int,
             exploration_std: float,
+            normalizer_state: Normalizer,
+            normalizer_action: Normalizer,
+            normalizer_state_and_goal: Normalizer,
             max_env_steps: int = 0,
             collect_device: str = 'cpu',
             train_device: str = 'cuda',
@@ -42,9 +45,9 @@ class EnvCollector:
         self.train_device = train_device
         self.is_parallel = is_parallel
 
-        self.normalizer_state = Normalizer()
-        self.normalizer_action = Normalizer()
-        self.normalizer_state_and_goal = Normalizer()
+        self.normalizer_state = normalizer_state
+        self.normalizer_action = normalizer_action
+        self.normalizer_state_and_goal = normalizer_state_and_goal
 
         self.current_policy = None
 
@@ -153,7 +156,6 @@ class EnvCollector:
         states_and_goals = self.env.preprocess_state_and_goal_for_policy(state=states, goal=goals)
 
         self.normalizer_state.warmup(states)
-        # self.normalizer_goal.warmup(torch.cat([g.unsqueeze(0) for g in goals], dim=0))
         self.normalizer_action.warmup(acts)
         self.normalizer_state_and_goal.warmup(states_and_goals)
 

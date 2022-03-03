@@ -1,7 +1,9 @@
+from fileinput import filename
 import os
 import platform
 from datetime import datetime
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as opt
@@ -23,6 +25,9 @@ def run(
 
     train_args = TrainArgs(train_args)
 
+    np.random.seed(train_args.seed)
+    torch.manual_seed(train_args.seed)
+
     """ Setup Environment/Gym """
 
     env = ReacherGoalEnv()
@@ -32,6 +37,56 @@ def run(
     goal_size = env.goal_size
     act_size = env.action_size
     po_input_size = env.policy_input_size
+
+    """ Logging """
+
+    date_str = datetime.now().strftime('%b%d_%H-%M-%S')
+    experiment_hash = date_str + '_' + platform.uname().node
+    log_path = os.path.join(train_args.logdir, experiment_hash)
+
+    writer = SummaryWriter(log_path)
+    writer.add_text(str(train_args))
+
+    """ Build Policy """
+
+    policy = Policy(
+                input_size=po_input_size,
+                action_size=act_size,
+                hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
+                fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
+                fn_post_process_action=lambda x : x,
+                ).to(train_args.device)
+
+    policy_opt = opt.RAdam(
+                    params=policy.parameters(), 
+                    lr=train_args.po_lr)
+                
+    policy_opt_sched = opt.lr_scheduler.LambdaLR(
+                    optimizer=policy_opt,
+                    lr_lambda=lambda epoch: 1 - epoch / train_args.epochs)
+
+    summary(policy, input_size=[(state_size,), (goal_size,)])
+
+    """ Build World Model"""
+
+    world_model = WorldModel(
+                state_size=state_size,
+                action_size=act_size,
+                hid_layers=[train_args.wm_hid_units] * train_args.wm_hid_layers,
+                fn_pre_process_state=env.preprocess_state_for_world_model,
+                fn_post_process_state=env.postprocess_state_for_world_model,
+                fn_pre_process_action=lambda x: x,
+                ).to(train_args.device)
+
+    world_model_opt = opt.RAdam(
+                    params=world_model.parameters(), 
+                    lr=train_args.wm_lr)
+
+    world_model_opt_sched = opt.lr_scheduler.LambdaLR(
+                    optimizer=world_model_opt,
+                    lr_lambda=lambda epoch: 1 - epoch / train_args.epochs)
+
+    summary(world_model, input_size=[(state_size,), (act_size,)])
 
     """ Build EnvCollector """
 
@@ -48,75 +103,13 @@ def run(
                         min_env_steps=max(train_args.wm_window, train_args.po_window),
                         max_env_steps=train_args.env_max_steps,
                         exploration_std=train_args.po_env_exploration,
+                        normalizer_state=world_model.normalizer_state,
+                        normalizer_action=world_model.normalizer_action,
+                        normalizer_state_and_goal=policy.normalizer_state_and_goal,
                         is_parallel=False, # TODO: True for multiprocessing
                         collect_device='cpu',
                         train_device=train_args.device
                         )
-
-    """ Logging """
-
-    date_str = datetime.now().strftime('%b%d_%H-%M-%S')
-    experiment_hash = date_str + '_' + platform.uname().node
-    log_path = os.path.join(train_args.logdir, experiment_hash)
-
-    writer = SummaryWriter(log_path)
-
-    """ Build Policy """
-
-    def pre_process_policy_input(state, goal):
-        x_pre = env.preprocess_state_and_goal_for_policy(state, goal)
-        return env_collector.normalizer_state_and_goal(x_pre)
-
-    policy = Policy(
-                input_size=po_input_size,
-                action_size=act_size,
-                hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
-                fn_combine_state_and_goal=pre_process_policy_input,
-                fn_post_process_action=lambda x : x,
-                ).to(train_args.device)
-
-    policy_opt = opt.RAdam(
-                    params=policy.parameters(), 
-                    lr=train_args.po_lr)
-                
-    policy_opt_sched = opt.lr_scheduler.LambdaLR(
-                    optimizer=policy_opt,
-                    lr_lambda=lambda epoch: 1 - epoch / train_args.epochs)
-
-    summary(policy, input_size=[(state_size,), (goal_size,)])
-
-    """ Build World Model"""
-
-    def pre_process_world_model_state(x):
-        x_pre = env.preprocess_state_for_world_model(x)
-        return env_collector.normalizer_state(x_pre)
-
-    def post_process_world_model_state(x):
-        # x_norm = env_collector.normalizer_state(x)
-        return env.preprocess_state_for_world_model(x)
-
-    def pre_process_world_model_action(x):
-        # return env_collector.normalizer_action(x)
-        return x
-
-    world_model = WorldModel(
-                state_size=state_size,
-                action_size=act_size,
-                hid_layers=[train_args.wm_hid_units] * train_args.wm_hid_layers,
-                fn_pre_process_state=pre_process_world_model_state,
-                fn_post_process_state=post_process_world_model_state,
-                fn_pre_process_action=pre_process_world_model_action,
-                ).to(train_args.device)
-
-    world_model_opt = opt.RAdam(
-                    params=world_model.parameters(), 
-                    lr=train_args.wm_lr)
-
-    world_model_opt_sched = opt.lr_scheduler.LambdaLR(
-                    optimizer=world_model_opt,
-                    lr_lambda=lambda epoch: 1 - epoch / train_args.epochs)
-
-    summary(world_model, input_size=[(state_size,), (act_size,)])
 
     """ Warm Up """
 
@@ -205,6 +198,8 @@ def run(
         writer.add_scalar('inputs/act_state_and_goal_mean', env_collector.normalizer_state_and_goal.accum_mean.norm(p=2), global_step=e)
         writer.add_scalar('inputs/act_state_and_goal_std', env_collector.normalizer_state_and_goal.accum_std.norm(p=2), global_step=e)
 
+        writer.add_scalar('inputs/wm_pred_residuals_avg', result['wm_pred_resid_avg'], global_step=e)
+
         writer.add_scalar('buffer/perc_buffer_filled', env_collector.buffer.percent_filled, global_step=e)
         writer.add_scalar('buffer/nsteps_collected', n_steps, global_step=e)
         writer.add_scalar('buffer/neps_collected', n_eps, global_step=e)
@@ -218,7 +213,7 @@ def run(
             filepath = os.path.join("runs", "models")
             os.makedirs(filepath, exist_ok=True)
 
-            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_rew_policy.pth"))
+            policy.save_to_path(filepath=os.path.join(filepath, "best_rew_policy.pth"))
 
             print("## BEST REWARD POLICY SAVED.")
 
@@ -229,7 +224,7 @@ def run(
             filepath = os.path.join("runs", "models")
             os.makedirs(filepath, exist_ok=True)
 
-            torch.save(policy.state_dict(), f=os.path.join(filepath, "best_loss_policy.pth"))
+            policy.save_to_path(filepath=os.path.join(filepath, "best_loss_policy.pth"))
 
             print("## BEST LOSS POLICY SAVED.")
 

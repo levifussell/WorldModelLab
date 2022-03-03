@@ -4,6 +4,8 @@ from grpc import Call
 import torch
 import torch.nn as nn
 
+from utils.normalizer import Normalizer
+
 class WorldModel(nn.Module):
 
     def __init__(
@@ -17,6 +19,9 @@ class WorldModel(nn.Module):
             final_layer_scale: float = 0.1,
             ) -> None:
         super(WorldModel, self).__init__()
+
+        self.normalizer_state = Normalizer(state_size)
+        self.normalizer_action = Normalizer(action_size)
 
         self.fn_pre_process_state = fn_pre_process_state
         self.fn_post_process_state = fn_post_process_state
@@ -36,6 +41,17 @@ class WorldModel(nn.Module):
 
         self.model = nn.Sequential(*self.model)
 
+    def _state_pre_process(self, state: torch.tensor) -> torch.tensor:
+        return self.normalizer_state(self.fn_pre_process_state(state))
+
+    def _state_post_process(self, state: torch.tensor) -> torch.tensor:
+        # return env_collector.normalizer_state(self.fn_post_process_state(state))
+        return self.fn_post_process_state(state)
+        
+    def _action_pre_process(self, action: torch.tensor) -> torch.tensor:
+        # return self.normalizer_action(self.fn_pre_process_action(state))
+        return self.fn_pre_process_action(action)
+
     def forward(
             self, 
             state_start : torch.tensor,
@@ -53,25 +69,27 @@ class WorldModel(nn.Module):
         if len(actions.shape) == 2: #IGNORE: SPECIAL CASE FOR TORCHSUMMARY.
             actions = actions.unsqueeze(1)
 
+        F = 10
+
         window = actions.shape[1]
 
-        pre_state_start = self.fn_pre_process_state(state_start)
-        pre_action = self.fn_pre_process_action(actions[:,0])
+        pre_state_start = self._state_pre_process(state_start)
+        pre_action = self._action_pre_process(actions[:,0])
 
         x = torch.cat([pre_state_start, pre_action], dim=-1)
 
         pred_resids = [self.model(x)]
-        pred_states = [self.fn_post_process_state(state_start + pred_resids[-1])]
+        pred_states = [self._state_post_process(state_start + pred_resids[-1])]
 
         for i in range(1, window):
             
-            pre_state_pred = self.fn_pre_process_state(pred_states[-1])
-            pre_action = self.fn_pre_process_action(actions[:, i])
+            pre_state_pred = self._state_pre_process(pred_states[-1])
+            pre_action = self._action_pre_process(actions[:, i])
 
             x = torch.cat([pre_state_pred, pre_action], dim=-1)
 
             pred_resids.append(self.model(x))
-            pred_states.append(self.fn_post_process_state(pred_states[-1] + pred_resids[-1]))
+            pred_states.append(self._state_post_process(pred_states[-1] + pred_resids[-1]))
 
         pred_resids = torch.cat([t.unsqueeze(1) for t in pred_resids], dim=1)
         pred_states = torch.cat([t.unsqueeze(1) for t in pred_states], dim=1)

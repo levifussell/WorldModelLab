@@ -14,6 +14,7 @@ DEFAULT_TRAIN_ARGS = {
 
         # general.
 
+    'seed'                      : 1234,
     'device'                    : 'cuda',
     'logdir'                    : 'runs/',
     'epochs'                    : 5000, #100,
@@ -27,7 +28,7 @@ DEFAULT_TRAIN_ARGS = {
         # world model.
 
     'wm_lr'                     : 1e-4,
-    'wm_max_grad_norm'          : 10.0,
+    'wm_max_grad_norm'          : 1.0,
     'wm_max_grad_skip'          : 20.0,
 
     'wm_train_samples'          : 4096,
@@ -43,7 +44,7 @@ DEFAULT_TRAIN_ARGS = {
         # policy.
 
     'po_lr'                     : 1e-4,
-    'po_max_grad_norm'          : 10.0,
+    'po_max_grad_norm'          : 1.0,
     'po_max_grad_skip'          : 20.0,
 
     'po_wm_exploration'         : 0.01, #0.05,
@@ -66,6 +67,10 @@ class TrainArgs:
     def __init__(self, args_dict : dict) -> None:
         for k in args_dict.keys():
             self.__setattr__(k, args_dict[k])
+    def __str__(self) -> str:
+        text = ""
+        for k in self.__dict__.keys():
+            text += f"{k}={self.__dict__[k]}"        
 
 def train_step(
 
@@ -108,6 +113,7 @@ def train_step(
         'wm_loss_l1_reg_avg'    : [],
         'wm_loss_l2_reg_avg'    : [],
         'wm_grad_norm_avg'      : [],
+        'wm_pred_resid_avg'     : [],
 
         'po_loss_avg'           : [],
         'po_loss_reward_avg'    : [],
@@ -153,6 +159,7 @@ def train_step(
             return loss_total, (diff_loss, l1_reg_loss, l2_reg_loss)
 
         wm_loss, (wm_diff_loss, wm_l1_reg_loss, wm_l2_reg_loss) = wm_loss(W_pred_state, B_state[:,1:], W_pred_resids)
+        # wm_loss, (wm_diff_loss, wm_l1_reg_loss, wm_l2_reg_loss) = wm_loss(W_pred_state[:, -1], B_state[:,-1], W_pred_resids)
 
         wm_loss.backward()
 
@@ -181,6 +188,7 @@ def train_step(
         stats['wm_loss_diff_avg'].append(wm_diff_loss.cpu().item())
         stats['wm_loss_l1_reg_avg'].append(wm_l1_reg_loss.cpu().item())
         stats['wm_loss_l2_reg_avg'].append(wm_l2_reg_loss.cpu().item())
+        stats['wm_pred_resid_avg'].append(torch.mean(torch.norm(W_pred_resids, p=2, dim=-1)).cpu().item())
 
 
     """Train Policy."""
@@ -215,6 +223,14 @@ def train_step(
                             goal=B_goal.view(rew_batch_size, -1),
                             act=P_action.view(rew_batch_size, -1),
                             ))
+
+        # rew_batch_size = P_state.shape[0]
+
+        # po_reward_loss = -1.0 * torch.mean(reward_func(
+        #                     state=P_state[:,-1].view(rew_batch_size, -1), 
+        #                     goal=B_goal[:,-1].view(rew_batch_size, -1),
+        #                     act=P_action[:,-1].view(rew_batch_size, -1),
+        #                     ))
 
         po_l1_reg_loss = train_args.po_l1_reg * torch.mean(torch.sum(torch.abs(P_action), dim=-1))
         po_l2_reg_loss = train_args.po_l2_reg * torch.mean(torch.sum(torch.square(P_action), dim=-1))
@@ -258,6 +274,22 @@ def train_step(
     stats['po_lr'] = policy_opt_sched.get_last_lr()[0]
     stats['wm_lr'] = world_model_opt_sched.get_last_lr()[0]
 
+    def get_model_weight_info(model: nn.Module) -> float:
+
+        weight_mag = 0
+        layer_count = 0
+
+        for p in model.parameters():
+            if isinstance(p, nn.Linear):
+                weight_mag += torch.mean(p.weight.data.cpu()).item()
+                layer_count += 1 
+
+        avg_weight_scale =  weight_mag / layer_count
+        return avg_weight_scale
+
+    stats['po_weight_scale'] = get_model_weight_info(policy)
+    stats['wm_weight_scale'] = get_model_weight_info(world_model)
+
     """Compute Stats"""
 
     for k in stats.keys():
@@ -267,4 +299,3 @@ def train_step(
             stats[k] = np.mean(stats[k])
 
     return stats
-

@@ -11,13 +11,31 @@ from dm_control.suite.reacher import easy as build_reacher_task
 
 from training.train import TrainArgs, DEFAULT_TRAIN_ARGS
 from training.policy import Policy
+from training.buffer import Buffer
+from training.env_collector import EnvCollector
 
 from env.reacher_dm_control_env import ReacherGoalEnv
 from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
 
+from enum import Enum
+
+class InferencePolicyType(Enum):
+
+    DETERMINISTIC = 0
+    NOISY = 1
+    RANDOM = 2
+
 if __name__ == "__main__":
 
     train_args = TrainArgs(DEFAULT_TRAIN_ARGS)
+
+    # test-specific args.
+
+    policy_type = InferencePolicyType.NOISY
+    run_bounded_ep = True
+    nsteps = 0
+
+    # env
 
     env = ReacherGoalEnv()
     # env = CartpoleBalanceGoalEnv()
@@ -37,11 +55,10 @@ if __name__ == "__main__":
                 fn_post_process_action=lambda x : x,
                 ).cpu()
 
-    state_dict = torch.load(po_filename, map_location='cpu')
-
-    policy.load_state_dict(state_dict)
+    policy.load_from_path(po_filename)
 
     def env_step(timestep):
+        global nsteps
 
         # action = np.random.uniform(act_spec.minimum, act_spec.maximum, act_spec.shape)
 
@@ -49,21 +66,41 @@ if __name__ == "__main__":
 
         curr_state = torch.FloatTensor(curr_state)
         curr_goal = torch.FloatTensor(curr_goal)
-
+        
         with torch.no_grad():
 
             action = policy.forward(
                         state=curr_state,
                         goal=curr_goal)
+
+            if policy_type == InferencePolicyType.DETERMINISTIC:
+
+                pass
+
+            elif policy_type == InferencePolicyType.NOISY:
+
+                action += torch.randn(action.shape) * train_args.po_env_exploration
+
+            elif policy_type == InferencePolicyType.RANDOM:
+
+                action = torch.randn(action.shape) * train_args.po_env_exploration
+
             # action += torch.randn(action.shape) * 0.5
             # action = torch.randn(action.shape) * 0.1
+
+        nsteps += 1
 
         reward = env.reward(curr_state, curr_goal, action)
 
         print("------------")
         print(f"\t ENV REWARD = {timestep.reward}")
         print(f"\t WM REWARD = {reward}")
+        print(f"\t GOAL = {curr_goal}")
+        print(f"\t STEPS = {nsteps}")
         print("------------")
+
+        if timestep.last():
+            nsteps = 0
 
         return action
 

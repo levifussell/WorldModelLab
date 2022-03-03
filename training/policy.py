@@ -3,6 +3,8 @@ from typing import Callable, Union, Tuple
 import torch
 import torch.nn as nn
 
+from utils.normalizer import Normalizer
+
 class Policy(nn.Module):
 
     def __init__(
@@ -17,6 +19,8 @@ class Policy(nn.Module):
         super(Policy, self).__init__()
 
         self.action_size = action_size
+
+        self.normalizer_state_and_goal = Normalizer(input_size)
 
         self.fn_combine_state_and_goal = fn_combine_state_and_goal
         self.fn_post_process_action = fn_post_process_action
@@ -35,6 +39,13 @@ class Policy(nn.Module):
 
         self.model = nn.Sequential(*self.model)
 
+    def _state_and_goal_preprocess(
+            self,
+            state: torch.tensor,
+            goal: torch.tensor,
+            ) -> torch.tensor:
+        return self.normalizer_state_and_goal(self.fn_combine_state_and_goal(state, goal))
+
     def forward(
             self, 
             state: torch.tensor,
@@ -48,7 +59,7 @@ class Policy(nn.Module):
         :return: action batch.
         """
 
-        x = self.fn_combine_state_and_goal(state, goal)
+        x = self._state_and_goal_preprocess(state, goal)
         return self.model(x)
 
     def forward_world_model(
@@ -97,3 +108,12 @@ class Policy(nn.Module):
         pred_actions = torch.cat([t.unsqueeze(1) for t in pred_actions], dim=1)
 
         return pred_states, pred_actions
+
+    def save_to_path(self, filepath: str) -> None:
+
+        torch.save(self.state_dict(), f=filepath)
+
+    def load_from_path(self, filepath: str) -> None:
+
+        state_dict = torch.load(filepath, map_location='cpu')
+        self.load_state_dict(state_dict)
