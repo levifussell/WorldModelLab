@@ -33,9 +33,9 @@ class Buffer:
 
     def add(
             self,
-            state : torch.tensor,
-            goal : torch.tensor,
-            act : torch.tensor,
+            state: torch.tensor,
+            goal: torch.tensor,
+            act: torch.tensor,
             ):
 
         assert state.shape[0] == act.shape[0] and state.shape[0] == goal.shape[0]

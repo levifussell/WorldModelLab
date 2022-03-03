@@ -110,18 +110,20 @@ def train_step(
     """
 
     stats = {
-        'wm_loss_avg'           : [],
-        'wm_loss_diff_avg'      : [],
-        'wm_loss_l1_reg_avg'    : [],
-        'wm_loss_l2_reg_avg'    : [],
-        'wm_grad_norm_avg'      : [],
-        'wm_pred_resid_avg'     : [],
+        'wm_loss_avg'                       : [],
+        'wm_loss_diff_avg'                  : [],
+        'wm_loss_l1_reg_avg'                : [],
+        'wm_loss_l2_reg_avg'                : [],
+        'wm_grad_norm_avg'                  : [],
+        'wm_pred_resid_avg'                 : [],
 
-        'po_loss_avg'           : [],
-        'po_loss_reward_avg'    : [],
-        'po_loss_l1_reg_avg'    : [],
-        'po_loss_l2_reg_avg'    : [],
-        'po_grad_norm_avg'      : [],
+        'po_loss_avg'                       : [],
+        'po_loss_reward_avg'                : [],
+        'po_loss_l1_reg_avg'                : [],
+        'po_loss_l2_reg_avg'                : [],
+        'po_grad_norm_avg'                  : [],
+        'po_grnd_loss_reward_avg'           : [],
+        'po_grnd_wm_loss_reward_diff_avg'   : [],
     }
 
     """Train World Model."""
@@ -161,7 +163,6 @@ def train_step(
             return loss_total, (diff_loss, l1_reg_loss, l2_reg_loss)
 
         wm_loss, (wm_diff_loss, wm_l1_reg_loss, wm_l2_reg_loss) = wm_loss(W_pred_state, B_state[:,1:], W_pred_resids)
-        # wm_loss, (wm_diff_loss, wm_l1_reg_loss, wm_l2_reg_loss) = wm_loss(W_pred_state[:, -1], B_state[:,-1], W_pred_resids)
 
         wm_loss.backward()
 
@@ -211,7 +212,7 @@ def train_step(
 
         P_state, P_action = policy.forward_world_model(
                 state_start=B_state[:,0], 
-                goals=B_goal,
+                goals=B_goal[:,:-1],
                 world_model=world_model, 
                 policy_noise=train_args.po_wm_exploration,
                 )
@@ -222,23 +223,14 @@ def train_step(
 
         po_reward_loss = -1.0 * torch.mean(reward_func(
                             state=P_state.view(rew_batch_size, -1), 
-                            goal=B_goal.view(rew_batch_size, -1),
+                            goal=B_goal[:,1:].reshape(rew_batch_size, -1),
                             act=P_action.view(rew_batch_size, -1),
                             ))
-
-        # rew_batch_size = P_state.shape[0]
-
-        # po_reward_loss = -1.0 * torch.mean(reward_func(
-        #                     state=P_state[:,-1].view(rew_batch_size, -1), 
-        #                     goal=B_goal[:,-1].view(rew_batch_size, -1),
-        #                     act=P_action[:,-1].view(rew_batch_size, -1),
-        #                     ))
 
         po_l1_reg_loss = train_args.po_l1_reg * torch.mean(torch.sum(torch.abs(P_action), dim=-1))
         po_l2_reg_loss = train_args.po_l2_reg * torch.mean(torch.sum(torch.square(P_action), dim=-1))
 
         po_loss = po_reward_loss + po_l1_reg_loss + po_l2_reg_loss
-        # po_loss = -1.0 * torch.mean(torch.sum(po_rewards.reshape(P_state.shape[0], P_state.shape[1]), dim=-1))
 
         po_loss.backward()
 
@@ -261,12 +253,23 @@ def train_step(
         else:
             print("!! POLICY GRADIENT SKIPPED.")
 
+            # ground-truth policy.
+
+        po_grnd_reward_loss = -1.0 * torch.mean(reward_func(
+                            state=B_state[:,1:].reshape(rew_batch_size, -1), 
+                            goal=B_goal[:,1:].reshape(rew_batch_size, -1),
+                            act=B_act[:,:-1].reshape(rew_batch_size, -1),
+                            ))
+
             # compile stats.
 
         stats['po_loss_avg'].append(po_loss.cpu().item())
         stats['po_loss_reward_avg'].append(po_reward_loss.cpu().item())
         stats['po_loss_l1_reg_avg'].append(po_l1_reg_loss.cpu().item())
         stats['po_loss_l2_reg_avg'].append(po_l2_reg_loss.cpu().item())
+
+        stats['po_grnd_loss_reward_avg'].append(po_grnd_reward_loss.cpu().item())
+        stats['po_grnd_wm_loss_reward_diff_avg'].append(stats['po_grnd_loss_reward_avg'][-1] - stats['po_loss_reward_avg'][-1])
 
     """ Post Tran"""
 
@@ -279,22 +282,37 @@ def train_step(
     def get_model_weight_info(model: nn.Module) -> Tuple[float, float]:
 
         weight_mag = 0
+        weight_max = float('-inf')
+        weight_min = float('+inf')
         bias_mag = 0
+        bias_max = float('-inf')
+        bias_min = float('+inf')
         layer_count = 0
 
         for n,p in model.named_parameters():
+            pr = p.data.cpu()
             if 'weight' in n:
-                weight_mag += torch.mean(p.data.cpu()).item()
+                weight_mag += torch.mean(pr).item()
+                weight_max = max(weight_max, torch.max(pr).item())
+                weight_min = min(weight_min, torch.min(pr).item())
                 layer_count += 1 
             elif 'bias' in n:
                 bias_mag += torch.mean(p.data.cpu()).item()
+                bias_max = max(bias_max, torch.max(pr).item())
+                bias_min = min(bias_min, torch.min(pr).item())
 
         avg_weight_scale =  weight_mag / layer_count
         avg_bias_scale =  bias_mag / layer_count
-        return avg_weight_scale, avg_bias_scale
 
-    stats['po_weight_scale'], stats['po_bias_scale'] = get_model_weight_info(policy)
-    stats['wm_weight_scale'], stats['wm_bias_scale'] = get_model_weight_info(world_model)
+        return (avg_weight_scale, weight_max, weight_min, avg_bias_scale, bias_max, bias_min)
+
+    ( stats['po_weight_scale'], stats['po_weight_max'], stats['po_weight_min'], 
+        stats['po_bias_scale'], stats['po_bias_max'], stats['po_bias_min']
+        ) = get_model_weight_info(policy)
+
+    ( stats['wm_weight_scale'], stats['wm_weight_max'], stats['wm_weight_min'], 
+        stats['wm_bias_scale'], stats['wm_bias_max'], stats['wm_bias_min']
+        ) = get_model_weight_info(world_model)
 
     """Compute Stats"""
 

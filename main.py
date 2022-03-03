@@ -174,9 +174,11 @@ def run(
         writer.add_scalar('rewards/rew_max', torch.max(rewards).item(), global_step=e)
 
         writer.add_scalar('loss/policy', result['po_loss_avg'], global_step=e)
-        writer.add_scalar('loss/policy_reward', result['po_loss_reward_avg'], global_step=e)
         writer.add_scalar('loss/policy_l1_reg', result['po_loss_l1_reg_avg'], global_step=e)
         writer.add_scalar('loss/policy_l2_reg', result['po_loss_l2_reg_avg'], global_step=e)
+        writer.add_scalar('loss/policy_loss_reward_wm', result['po_loss_reward_avg'], global_step=e)
+        writer.add_scalar('loss/policy_loss_reward_grnd', result['po_grnd_loss_reward_avg'], global_step=e)
+        writer.add_scalar('loss/policy_loss_reward_wm_to_grnd_diff', result['po_grnd_wm_loss_reward_diff_avg'], global_step=e)
 
         writer.add_scalar('loss/world_model', result['wm_loss_avg'], global_step=e)
         writer.add_scalar('loss/world_model_diff', result['wm_loss_diff_avg'], global_step=e)
@@ -195,14 +197,22 @@ def run(
         writer.add_scalar('inputs/act_scale_mean', env_collector.normalizer_action.accum_mean.norm(p=2), global_step=e)
         writer.add_scalar('inputs/act_scale_std', env_collector.normalizer_action.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/act_state_and_goal_mean', env_collector.normalizer_state_and_goal.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/act_state_and_goal_std', env_collector.normalizer_state_and_goal.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_and_goal_mean', env_collector.normalizer_state_and_goal.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_and_goal_std', env_collector.normalizer_state_and_goal.accum_std.norm(p=2), global_step=e)
 
         writer.add_scalar('models/po_weight_scale', result['po_weight_scale'], global_step=e)
+        writer.add_scalar('models/po_weight_max', result['po_weight_max'], global_step=e)
+        writer.add_scalar('models/po_weight_min', result['po_weight_min'], global_step=e)
         writer.add_scalar('models/po_bias_scale', result['po_bias_scale'], global_step=e)
+        writer.add_scalar('models/po_bias_max', result['po_bias_max'], global_step=e)
+        writer.add_scalar('models/po_bias_min', result['po_bias_min'], global_step=e)
 
         writer.add_scalar('models/wm_weight_scale', result['wm_weight_scale'], global_step=e)
+        writer.add_scalar('models/wm_weight_max', result['wm_weight_max'], global_step=e)
+        writer.add_scalar('models/wm_weight_min', result['wm_weight_min'], global_step=e)
         writer.add_scalar('models/wm_bias_scale', result['wm_bias_scale'], global_step=e)
+        writer.add_scalar('models/wm_bias_max', result['wm_bias_max'], global_step=e)
+        writer.add_scalar('models/wm_bias_min', result['wm_bias_min'], global_step=e)
         writer.add_scalar('models/wm_pred_residuals_avg', result['wm_pred_resid_avg'], global_step=e)
 
         writer.add_scalar('buffer/perc_buffer_filled', env_collector.buffer.percent_filled, global_step=e)

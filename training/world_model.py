@@ -49,8 +49,8 @@ class WorldModel(nn.Module):
         return self.fn_post_process_state(state)
         
     def _action_pre_process(self, action: torch.tensor) -> torch.tensor:
-        # return self.normalizer_action(self.fn_pre_process_action(state))
-        return self.fn_pre_process_action(action)
+        return self.normalizer_action(self.fn_pre_process_action(action))
+        # return self.fn_pre_process_action(action)
 
     def forward(
             self, 
@@ -68,8 +68,6 @@ class WorldModel(nn.Module):
 
         if len(actions.shape) == 2: #IGNORE: SPECIAL CASE FOR TORCHSUMMARY.
             actions = actions.unsqueeze(1)
-
-        F = 10
 
         window = actions.shape[1]
 

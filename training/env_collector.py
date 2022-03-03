@@ -118,13 +118,11 @@ class EnvCollector:
             goal = torch.FloatTensor(goal)
 
             states.append(state)
-
             goals.append(goal)
 
             while not done:
 
                 act = torch.rand(self.current_policy.action_size)
-
                 acts.append(act)
                 
                 state, goal, done, info = self.env.step(act)
@@ -141,10 +139,7 @@ class EnvCollector:
                     done = True # TODO: make this a case-specific done.
                     break
 
-                # buffer addition.
-
                 states.append(state)
-
                 goals.append(goal)
 
             n_steps += len(states)
@@ -158,7 +153,6 @@ class EnvCollector:
         self.normalizer_state.warmup(states)
         self.normalizer_action.warmup(acts)
         self.normalizer_state_and_goal.warmup(states_and_goals)
-
 
 
     def collect(
@@ -177,6 +171,8 @@ class EnvCollector:
         n_steps = 0
         n_eps = 0
 
+        rewards = []
+
         while n_steps < min_num_steps:
 
             done = False
@@ -184,7 +180,6 @@ class EnvCollector:
             states = []
             goals = []
             acts = []
-            rewards = []
 
             state, goal = self.env.reset()
 
@@ -214,7 +209,7 @@ class EnvCollector:
                 self.normalizer_action += act
 
                 rewards.append(self.env.reward(state=state, goal=goal, act=act))
-                
+
                 state, goal, done, info = self.env.step(act)
 
                 state = torch.FloatTensor(state)
