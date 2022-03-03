@@ -17,8 +17,8 @@ DEFAULT_TRAIN_ARGS = {
     'seed'                      : 1234,
     'device'                    : 'cuda',
     'logdir'                    : 'runs/',
-    'epochs'                    : 5000, #100,
-    'max_buffer_size'           : 4096*32,#*3,
+    'epochs'                    : 5000,
+    'max_buffer_size'           : 4096*32,
 
         # env.
 
@@ -32,7 +32,7 @@ DEFAULT_TRAIN_ARGS = {
     'wm_max_grad_skip'          : 20.0,
 
     'wm_train_samples'          : 4096,
-    'wm_minibatch'              : 1024, #128,
+    'wm_minibatch'              : 1024,
 
     'wm_hid_units'              : 1024,
     'wm_hid_layers'             : 3,
@@ -47,11 +47,11 @@ DEFAULT_TRAIN_ARGS = {
     'po_max_grad_norm'          : 1.0,
     'po_max_grad_skip'          : 20.0,
 
-    'po_wm_exploration'         : 0.01, #0.05,
+    'po_wm_exploration'         : 0.01,
     'po_env_exploration'        : 0.1,
 
     'po_train_samples'          : 4096,
-    'po_minibatch'              : 1024, #256,
+    'po_minibatch'              : 1024,
 
     'po_hid_units'              : 1024,
     'po_hid_layers'             : 3,
