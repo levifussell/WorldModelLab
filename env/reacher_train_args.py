@@ -2,6 +2,7 @@ REACHER_TRAIN_ARGS = {
 
         # general.
 
+    'seed'                      : 1234,
     'name'                      : 'reacher',
     'device'                    : 'cuda',
     'logdir'                    : 'runs/',

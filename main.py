@@ -26,11 +26,13 @@ def run(
 ):
 
     train_args = TrainArgs(train_args)
+    print("ARGS: \n" +str(train_args))
 
     np.random.seed(train_args.seed)
     torch.manual_seed(train_args.seed)
 
     """ Setup Environment/Gym """
+
     state_size = env.state_size
     goal_size = env.goal_size
     act_size = env.action_size
@@ -43,7 +45,7 @@ def run(
     log_path = os.path.join(train_args.logdir, experiment_hash)
 
     writer = SummaryWriter(log_path)
-    writer.add_text(str(train_args))
+    writer.add_text(tag="args", text_string=str(train_args))
 
     """ Build Policy """
 
@@ -196,7 +198,12 @@ def run(
         writer.add_scalar('inputs/act_state_and_goal_mean', env_collector.normalizer_state_and_goal.accum_mean.norm(p=2), global_step=e)
         writer.add_scalar('inputs/act_state_and_goal_std', env_collector.normalizer_state_and_goal.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/wm_pred_residuals_avg', result['wm_pred_resid_avg'], global_step=e)
+        writer.add_scalar('models/po_weight_scale', result['po_weight_scale'], global_step=e)
+        writer.add_scalar('models/po_bias_scale', result['po_bias_scale'], global_step=e)
+
+        writer.add_scalar('models/wm_weight_scale', result['wm_weight_scale'], global_step=e)
+        writer.add_scalar('models/wm_bias_scale', result['wm_bias_scale'], global_step=e)
+        writer.add_scalar('models/wm_pred_residuals_avg', result['wm_pred_resid_avg'], global_step=e)
 
         writer.add_scalar('buffer/perc_buffer_filled', env_collector.buffer.percent_filled, global_step=e)
         writer.add_scalar('buffer/nsteps_collected', n_steps, global_step=e)

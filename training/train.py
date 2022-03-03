@@ -1,10 +1,11 @@
+
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.optim as opt
 
-from typing import Callable
+from typing import Callable, Tuple
 
 from .env_collector import EnvCollector
 from .policy import Policy
@@ -70,7 +71,8 @@ class TrainArgs:
     def __str__(self) -> str:
         text = ""
         for k in self.__dict__.keys():
-            text += f"{k}={self.__dict__[k]}"        
+            text += f"{k}={self.__dict__[k]}, "        
+        return text
 
 def train_step(
 
@@ -274,21 +276,25 @@ def train_step(
     stats['po_lr'] = policy_opt_sched.get_last_lr()[0]
     stats['wm_lr'] = world_model_opt_sched.get_last_lr()[0]
 
-    def get_model_weight_info(model: nn.Module) -> float:
+    def get_model_weight_info(model: nn.Module) -> Tuple[float, float]:
 
         weight_mag = 0
+        bias_mag = 0
         layer_count = 0
 
-        for p in model.parameters():
-            if isinstance(p, nn.Linear):
-                weight_mag += torch.mean(p.weight.data.cpu()).item()
+        for n,p in model.named_parameters():
+            if 'weight' in n:
+                weight_mag += torch.mean(p.data.cpu()).item()
                 layer_count += 1 
+            elif 'bias' in n:
+                bias_mag += torch.mean(p.data.cpu()).item()
 
         avg_weight_scale =  weight_mag / layer_count
-        return avg_weight_scale
+        avg_bias_scale =  bias_mag / layer_count
+        return avg_weight_scale, avg_bias_scale
 
-    stats['po_weight_scale'] = get_model_weight_info(policy)
-    stats['wm_weight_scale'] = get_model_weight_info(world_model)
+    stats['po_weight_scale'], stats['po_bias_scale'] = get_model_weight_info(policy)
+    stats['wm_weight_scale'], stats['wm_bias_scale'] = get_model_weight_info(world_model)
 
     """Compute Stats"""
 

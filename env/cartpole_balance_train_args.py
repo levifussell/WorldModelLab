@@ -2,6 +2,7 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
 
         # general.
 
+    'seed'                      : 1234,
     'name'                      : 'cartpole_balance',
     'device'                    : 'cuda',
     'logdir'                    : 'runs/',
