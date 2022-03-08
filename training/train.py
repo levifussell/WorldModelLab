@@ -11,6 +11,8 @@ from .env_collector import EnvCollector
 from .policy import Policy
 from .world_model import WorldModel
 
+from utils.utils import grad_layer_norm, compute_per_rollout_wm_gradient, compute_per_rollout_po_gradient
+
 DEFAULT_TRAIN_ARGS = {
 
         # general.
@@ -28,7 +30,7 @@ DEFAULT_TRAIN_ARGS = {
 
         # world model.
 
-    'wm_lr'                     : 1e-4,
+    'wm_lr'                     : 1e-3,
     'wm_max_grad_norm'          : 1.0,
     'wm_max_grad_skip'          : 20.0,
 
@@ -44,7 +46,7 @@ DEFAULT_TRAIN_ARGS = {
 
         # policy.
 
-    'po_lr'                     : 1e-4,
+    'po_lr'                     : 1e-3,
     'po_max_grad_norm'          : 1.0,
     'po_max_grad_skip'          : 20.0,
 
@@ -90,6 +92,8 @@ def train_step(
 
     train_args                  : TrainArgs,
 
+    no_train                    : bool = False,
+
 ) -> None:
     """
     Performs training step of the policy and world model.
@@ -126,7 +130,27 @@ def train_step(
         'po_grnd_wm_loss_reward_diff_avg'   : [],
     }
 
+    if train_args.deep_stats:
+
+        for w in range(train_args.wm_window - 1):
+            stats[f'wm_grad_rollout_{w}_avg'] = []
+
+        for w in range(train_args.po_window - 1):
+            stats[f'po_grad_rollout_{w}_avg'] = []
+
     """Train World Model."""
+
+    def wm_loss_func(W_pred, W_targ, W_resids):
+
+        assert W_pred.shape == W_targ.shape
+
+        diff_loss = torch.mean(torch.sum(torch.abs(W_pred - W_targ), dim=-1))
+        l1_reg_loss = train_args.wm_l1_reg * torch.mean(torch.sum(torch.abs(W_resids), dim=-1))
+        l2_reg_loss = train_args.wm_l2_reg * torch.mean(torch.sum(torch.square(W_resids), dim=-1))
+
+        loss_total = diff_loss + l1_reg_loss + l2_reg_loss
+
+        return loss_total, (diff_loss, l1_reg_loss, l2_reg_loss)
 
         # collect buffer samples.
 
@@ -139,6 +163,22 @@ def train_step(
 
         # B_* : (N, T, F) where N = batch size, T = time window, F = features
 
+            # track deep stats.
+
+        if train_args.deep_stats:
+
+            wm_per_rollout_grads = compute_per_rollout_wm_gradient(
+                world_model=world_model,
+                world_model_opt=world_model_opt,
+                data=(B_state, B_act),
+                loss_func=lambda x,y,z : wm_loss_func(x,y,z)[0]
+            )
+
+            assert train_args.wm_window -1 == wm_per_rollout_grads.shape[0]
+
+            for w in range(train_args.wm_window - 1):
+                stats[f'wm_grad_rollout_{w}_avg'].append(wm_per_rollout_grads[w])
+
         world_model_opt.zero_grad()
 
             # get world model predictions.
@@ -150,19 +190,7 @@ def train_step(
 
             # train the world model.
         
-        def wm_loss(W_pred, W_targ, W_resids):
-
-            assert W_pred.shape == W_targ.shape
-
-            diff_loss = torch.mean(torch.sum(torch.abs(W_pred - W_targ), dim=-1))
-            l1_reg_loss = train_args.wm_l1_reg * torch.mean(torch.sum(torch.abs(W_resids), dim=-1))
-            l2_reg_loss = train_args.wm_l2_reg * torch.mean(torch.sum(torch.square(W_resids), dim=-1))
-
-            loss_total = diff_loss + l1_reg_loss + l2_reg_loss
-
-            return loss_total, (diff_loss, l1_reg_loss, l2_reg_loss)
-
-        wm_loss, (wm_diff_loss, wm_l1_reg_loss, wm_l2_reg_loss) = wm_loss(W_pred_state, B_state[:,1:], W_pred_resids)
+        wm_loss, (wm_diff_loss, wm_l1_reg_loss, wm_l2_reg_loss) = wm_loss_func(W_pred_state, B_state[:,1:], W_pred_resids)
 
         wm_loss.backward()
 
@@ -174,16 +202,20 @@ def train_step(
                 world_model.parameters(),
                 max_norm=train_args.wm_max_grad_norm
             )
+            # wm_grad = grad_layer_norm(world_model.parameters())
 
             if wm_grad > train_args.wm_max_grad_skip:
                 grad_skip = True
 
             stats['wm_grad_norm_avg'].append(wm_grad.cpu().item())
 
-        if not grad_skip:
-            world_model_opt.step()
+        if no_train:
+            print("WORLD MODEL TRAIN DISABLED")
         else:
-            print("WORLD MODEL GRADIENT SKIPPED.")
+            if not grad_skip:
+                world_model_opt.step()
+            else:
+                print("!! WORLD MODEL GRADIENT SKIPPED.")
 
             # compile stats.
 
@@ -196,6 +228,24 @@ def train_step(
 
     """Train Policy."""
 
+    def po_loss_func(P_states, P_goals, P_actions):
+
+        rew_batch_size = np.prod(P_states.shape[:2])
+        window = P_states.shape[1]
+
+        po_reward_loss = -1.0 * torch.mean(torch.sum(reward_func(
+                            state=P_states.reshape(rew_batch_size, -1), 
+                            goal=P_goals.reshape(rew_batch_size, -1),
+                            act=P_actions.reshape(rew_batch_size, -1),
+                            ).reshape(-1, window), dim=-1))
+
+        po_l1_reg_loss = train_args.po_l1_reg * torch.mean(torch.sum(torch.abs(P_actions), dim=-1))
+        po_l2_reg_loss = train_args.po_l2_reg * torch.mean(torch.sum(torch.square(P_actions), dim=-1))
+
+        po_loss = po_reward_loss + po_l1_reg_loss + po_l2_reg_loss
+
+        return po_loss, (po_reward_loss, po_l1_reg_loss, po_l2_reg_loss)
+
         # collect buffer samples.
 
     samples_iterator = env_collector.sample_buffer(
@@ -206,6 +256,24 @@ def train_step(
     for (B_state, B_goal, B_act) in samples_iterator:
 
         # B_* : (N, T, F) where N = batch size, T = time window, F = features
+
+            # track deep stats.
+
+        if train_args.deep_stats:
+
+            po_per_rollout_grads = compute_per_rollout_po_gradient(
+                policy=policy,
+                policy_opt=policy_opt,
+                world_model=world_model,
+                world_model_opt=world_model_opt,
+                data=(B_state, B_goal, B_act),
+                loss_func=lambda x,y,z : po_loss_func(x,y,z)[0]
+            )
+
+            assert train_args.po_window -1 == po_per_rollout_grads.shape[0]
+
+            for w in range(train_args.po_window - 1):
+                stats[f'po_grad_rollout_{w}_avg'].append(po_per_rollout_grads[w])
 
         world_model_opt.zero_grad()
         policy_opt.zero_grad()
@@ -219,18 +287,27 @@ def train_step(
 
             # train the policy.
 
-        rew_batch_size = np.prod(P_state.shape[:2])
+        # rew_batch_size = np.prod(P_state.shape[:2])
+        # window = P_state.shape[1]
 
-        po_reward_loss = -1.0 * torch.mean(reward_func(
-                            state=P_state.view(rew_batch_size, -1), 
-                            goal=B_goal[:,1:].reshape(rew_batch_size, -1),
-                            act=P_action.view(rew_batch_size, -1),
-                            ))
+        # # po_reward_loss = -1.0 * torch.mean(reward_func(
+        # #                     state=P_state.view(rew_batch_size, -1), 
+        # #                     goal=B_goal[:,1:].reshape(rew_batch_size, -1),
+        # #                     act=P_action.view(rew_batch_size, -1),
+        # #                     ))
 
-        po_l1_reg_loss = train_args.po_l1_reg * torch.mean(torch.sum(torch.abs(P_action), dim=-1))
-        po_l2_reg_loss = train_args.po_l2_reg * torch.mean(torch.sum(torch.square(P_action), dim=-1))
+        # po_reward_loss = -1.0 * torch.mean(torch.sum(reward_func(
+        #                     state=P_state.view(rew_batch_size, -1), 
+        #                     goal=B_goal[:,1:].reshape(rew_batch_size, -1),
+        #                     act=P_action.view(rew_batch_size, -1),
+        #                     ).reshape(-1, window), dim=-1))
 
-        po_loss = po_reward_loss + po_l1_reg_loss + po_l2_reg_loss
+        # po_l1_reg_loss = train_args.po_l1_reg * torch.mean(torch.sum(torch.abs(P_action), dim=-1))
+        # po_l2_reg_loss = train_args.po_l2_reg * torch.mean(torch.sum(torch.square(P_action), dim=-1))
+
+        # po_loss = po_reward_loss + po_l1_reg_loss + po_l2_reg_loss
+
+        po_loss, (po_reward_loss, po_l1_reg_loss, po_l2_reg_loss) = po_loss_func(P_state, B_goal[:, 1:], P_action)
 
         po_loss.backward()
 
@@ -242,24 +319,36 @@ def train_step(
                 policy.parameters(),
                 max_norm=train_args.po_max_grad_norm
             )
+            # po_grad = grad_layer_norm(policy.parameters())
 
             if po_grad > train_args.po_max_grad_skip:
                 grad_skip = True
 
             stats['po_grad_norm_avg'].append(po_grad.cpu().item())
 
-        if not grad_skip:
-            policy_opt.step()
+        if no_train:
+            print("POLICY TRAIN DISABLED")
         else:
-            print("!! POLICY GRADIENT SKIPPED.")
+            if not grad_skip:
+                policy_opt.step()
+            else:
+                print("!! POLICY GRADIENT SKIPPED.")
 
             # ground-truth policy.
 
-        po_grnd_reward_loss = -1.0 * torch.mean(reward_func(
-                            state=B_state[:,1:].reshape(rew_batch_size, -1), 
-                            goal=B_goal[:,1:].reshape(rew_batch_size, -1),
-                            act=B_act[:,:-1].reshape(rew_batch_size, -1),
-                            ))
+        # po_grnd_reward_loss = -1.0 * torch.mean(reward_func(
+        #                     state=B_state[:,1:].reshape(rew_batch_size, -1), 
+        #                     goal=B_goal[:,1:].reshape(rew_batch_size, -1),
+        #                     act=B_act[:,:-1].reshape(rew_batch_size, -1),
+        #                     ))
+
+        # po_grnd_reward_loss = -1.0 * torch.mean(torch.sum(reward_func(
+        #                     state=B_state[:,1:].reshape(rew_batch_size, -1), 
+        #                     goal=B_goal[:,1:].reshape(rew_batch_size, -1),
+        #                     act=B_act[:,:-1].reshape(rew_batch_size, -1),
+        #                     ).reshape(-1, window), dim=-1))
+
+        po_grnd_loss, (po_grnd_reward_loss, po_grnd_l1_loss, po_grnd_l2_loss) = po_loss_func(B_state[:,1:], B_goal[:,1:], B_act[:,:-1])
 
             # compile stats.
 

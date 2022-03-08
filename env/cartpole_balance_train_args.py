@@ -6,6 +6,10 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
     'name'                      : 'cartpole_balance',
     'device'                    : 'cuda',
     'logdir'                    : 'runs/',
+    'deep_stats'                : False,
+
+        # train.
+        
     'epochs'                    : 5000, #100,
     'max_buffer_size'           : 4096*32,#*3,
 

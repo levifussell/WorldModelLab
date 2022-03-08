@@ -82,7 +82,9 @@ class Buffer:
         valid_indices = np.concatenate(valid_indices)
 
         if len(valid_indices) < nsamples:
-            raise Exception("Buffer is too small for number of requested samples.")
+            # raise Exception("Buffer is too small for number of requested samples.")
+            print(f"Buffer is too small for number of requested samples. Returning {len(valid_indices)}")
+            nsamples = len(valid_indices)
 
         selected_indices = valid_indices[np.random.permutation(len(valid_indices))[:nsamples]]
 

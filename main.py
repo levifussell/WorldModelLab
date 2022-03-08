@@ -28,6 +28,9 @@ def run(
     train_args = TrainArgs(train_args)
     print("ARGS: \n" +str(train_args))
 
+    if train_args.deep_stats:
+        print("!! WARNING: TRACKING DEEP STATS. This will slow down training.")
+
     np.random.seed(train_args.seed)
     torch.manual_seed(train_args.seed)
 
@@ -104,6 +107,7 @@ def run(
                         max_env_steps=train_args.env_max_steps,
                         exploration_std=train_args.po_env_exploration,
                         normalizer_state=world_model.normalizer_state,
+                        normalizer_state_delta=world_model.normalizer_state_delta,
                         normalizer_action=world_model.normalizer_action,
                         normalizer_state_and_goal=policy.normalizer_state_and_goal,
                         is_parallel=False, # TODO: True for multiprocessing
@@ -119,7 +123,7 @@ def run(
     print(f"BUFFER SIZE: {len(buffer)}")
 
     print("WARMING UP NORMALIZER...")
-    env_collector.warmup_normalizer(warmup_steps=1000)
+    env_collector.warmup_normalizer(warmup_steps=train_args.env_steps_per_train)
     print("...WARMUP COMPLETE.")
 
     """ Train Loop """
@@ -135,7 +139,7 @@ def run(
         # collect environment.
 
         if not env_collector.is_parallel:
-            n_steps, n_eps, rewards = env_collector.collect(train_args.env_steps_per_train)
+            n_steps, n_eps, returns = env_collector.collect(train_args.env_steps_per_train)
 
             print(f"COLLECTED {n_steps} STEPS")
             print(f"COLLECTED {n_eps} EPISODES")
@@ -164,14 +168,14 @@ def run(
 
         # LOGGING
 
-        rew_avg = torch.mean(rewards).item()
+        return_avg = torch.mean(returns).item()
 
-        print(f"EPOCH {e}: po-loss = {result['po_loss_avg']}, wm-loss = {result['wm_loss_avg']}, rew = {rew_avg}")
+        print(f"EPOCH {e}: po-loss = {result['po_loss_avg']}, wm-loss = {result['wm_loss_avg']}, return = {return_avg}")
 
-        writer.add_scalar('rewards/rew_mean', rew_avg, global_step=e)
-        writer.add_scalar('rewards/rew_std', torch.std(rewards).item(), global_step=e)
-        writer.add_scalar('rewards/rew_min', torch.min(rewards).item(), global_step=e)
-        writer.add_scalar('rewards/rew_max', torch.max(rewards).item(), global_step=e)
+        writer.add_scalar('rewards/rew_mean', return_avg, global_step=e)
+        writer.add_scalar('rewards/rew_std', torch.std(returns).item(), global_step=e)
+        writer.add_scalar('rewards/rew_min', torch.min(returns).item(), global_step=e)
+        writer.add_scalar('rewards/rew_max', torch.max(returns).item(), global_step=e)
 
         writer.add_scalar('loss/policy', result['po_loss_avg'], global_step=e)
         writer.add_scalar('loss/policy_l1_reg', result['po_loss_l1_reg_avg'], global_step=e)
@@ -193,6 +197,9 @@ def run(
 
         writer.add_scalar('inputs/state_scale_mean', env_collector.normalizer_state.accum_mean.norm(p=2), global_step=e)
         writer.add_scalar('inputs/state_scale_std', env_collector.normalizer_state.accum_std.norm(p=2), global_step=e)
+
+        writer.add_scalar('inputs/state_delta_mean', env_collector.normalizer_state_delta.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_delta_std', env_collector.normalizer_state_delta.accum_std.norm(p=2), global_step=e)
 
         writer.add_scalar('inputs/act_scale_mean', env_collector.normalizer_action.accum_mean.norm(p=2), global_step=e)
         writer.add_scalar('inputs/act_scale_std', env_collector.normalizer_action.accum_std.norm(p=2), global_step=e)
@@ -219,11 +226,19 @@ def run(
         writer.add_scalar('buffer/nsteps_collected', n_steps, global_step=e)
         writer.add_scalar('buffer/neps_collected', n_eps, global_step=e)
 
+        if train_args.deep_stats:
+
+            for w in range(train_args.wm_window - 1):
+                writer.add_scalar(f'deepstats/wm_grad_rollout_{w}_avg', result[f'wm_grad_rollout_{w}_avg'], global_step=e)
+
+            for w in range(train_args.po_window - 1):
+                writer.add_scalar(f'deepstats/po_grad_rollout_{w}_avg', result[f'po_grad_rollout_{w}_avg'], global_step=e)
+
         # SAVING
 
-        if rew_avg > best_avg_rew:
+        if return_avg > best_avg_rew:
 
-            best_avg_rew = rew_avg
+            best_avg_rew = return_avg
 
             filepath = os.path.join("runs", "models")
             os.makedirs(filepath, exist_ok=True)
@@ -231,6 +246,23 @@ def run(
             policy.save_to_path(filepath=os.path.join(filepath, f"best_{train_args.name}_rew_policy.pth"))
 
             print("## BEST REWARD POLICY SAVED.")
+
+            #TEMP ---
+            # Reload the policy and determine that it matches.
+
+            temp_policy = Policy(
+                    input_size=po_input_size,
+                    action_size=act_size,
+                    hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
+                    fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
+                    fn_post_process_action=lambda x : x,
+                    )
+            temp_policy.load_from_path(filepath=os.path.join(filepath, f"best_{train_args.name}_rew_policy.pth"))
+
+            for p,q in zip(env_collector.current_policy.parameters(), temp_policy.parameters()):
+
+                assert torch.sum(torch.abs(p.cpu().data - q.cpu().data)) == 0
+            #--------
 
         if result['po_loss_avg'] < best_po_loss:
 

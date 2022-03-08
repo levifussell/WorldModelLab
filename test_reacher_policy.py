@@ -1,6 +1,7 @@
 from typing import Tuple, Union
 import numpy as np
 import torch
+from torchsummary import summary
 
 from dm_control import mujoco
 from dm_control.rl import control
@@ -33,7 +34,7 @@ if __name__ == "__main__":
 
     # test-specific args.
 
-    policy_type = InferencePolicyType.NOISY
+    policy_type = InferencePolicyType.DETERMINISTIC
     run_bounded_ep = True
     nsteps = 0
 
@@ -57,55 +58,151 @@ if __name__ == "__main__":
                 hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
                 fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
                 fn_post_process_action=lambda x : x,
-                ).cpu()
+                ).to('cuda')
 
     policy.load_from_path(po_filename)
 
-    def env_step(timestep):
-        global nsteps
+    summary(policy, input_size=[(state_size,), (goal_size,)])
 
-        # action = np.random.uniform(act_spec.minimum, act_spec.maximum, act_spec.shape)
+    for n,p in policy.named_parameters():
+        print(n, p)
 
-        curr_state, curr_goal = env.get_curr_global_state_and_goal()
+    policy.cpu()
 
-        curr_state = torch.FloatTensor(curr_state)
-        curr_goal = torch.FloatTensor(curr_goal)
+    # def env_step(timestep):
+    #     global nsteps
+
+    #     # action = np.random.uniform(act_spec.minimum, act_spec.maximum, act_spec.shape)
+
+    #     curr_state, curr_goal = env.get_curr_global_state_and_goal()
+
+    #     curr_state = torch.FloatTensor(curr_state)
+    #     curr_goal = torch.FloatTensor(curr_goal)
         
-        with torch.no_grad():
+    #     with torch.no_grad():
 
-            action = policy.forward(
-                        state=curr_state,
-                        goal=curr_goal)
+    #         action = policy.forward(
+    #                     state=curr_state,
+    #                     goal=curr_goal)
 
-            if policy_type == InferencePolicyType.DETERMINISTIC:
+    #         if policy_type == InferencePolicyType.DETERMINISTIC:
 
-                pass
+    #             pass
 
-            elif policy_type == InferencePolicyType.NOISY:
+    #         elif policy_type == InferencePolicyType.NOISY:
 
-                action += torch.randn(action.shape) * train_args.po_env_exploration
+    #             action += torch.randn(action.shape) * train_args.po_env_exploration
 
-            elif policy_type == InferencePolicyType.RANDOM:
+    #         elif policy_type == InferencePolicyType.RANDOM:
 
-                action = torch.randn(action.shape) * train_args.po_env_exploration
+    #             action = torch.randn(action.shape) * train_args.po_env_exploration
 
-            # action += torch.randn(action.shape) * 0.5
-            # action = torch.randn(action.shape) * 0.1
+    #         # action += torch.randn(action.shape) * 0.5
+    #         # action = torch.randn(action.shape) * 0.1
 
-        nsteps += 1
+    #     nsteps += 1
 
-        reward = env.reward(curr_state, curr_goal, action)
+    #     reward = env.reward(curr_state, curr_goal, action)
 
-        print("------------")
-        print(f"\t ENV REWARD = {timestep.reward}")
-        print(f"\t WM REWARD = {reward}")
-        print(f"\t GOAL = {curr_goal}")
-        print(f"\t STEPS = {nsteps}")
-        print("------------")
+    #     print("------------")
+    #     print(f"\t ENV REWARD = {timestep.reward}")
+    #     print(f"\t WM REWARD = {reward}")
+    #     print(f"\t GOAL = {curr_goal}")
+    #     print(f"\t STEPS = {nsteps}")
+    #     print("------------")
 
-        if timestep.last():
-            nsteps = 0
+    #     if timestep.last():
+    #         nsteps = 0
 
-        return action
+    #     return action
 
-    viewer.launch(env._env_gym, policy=env_step)
+    # viewer.launch(env._env_gym, policy=env_step)
+
+    # USING CUSTOM ENV LOOP
+
+    # eps = 10
+
+    # for e in range(eps):
+
+    #     done = False
+
+    #     states = []
+    #     goals = []
+    #     acts = []
+    #     rewards = []
+
+    #     state, goal = env.reset()
+
+    #     state = torch.FloatTensor(state)
+    #     goal = torch.FloatTensor(goal)
+
+    #     states.append(state)
+
+    #     goals.append(goal)
+
+    #     state_and_goal = env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
+
+    #     while not done:
+
+    #         with torch.no_grad():
+
+    #             act = policy(
+    #                         state=state,
+    #                         goal=goal,
+    #                         ).cpu()
+
+    #             # act += torch.randn(act.shape).to(act.device) * self.exploration_std
+
+    #         acts.append(act)
+
+    #         rewards.append(env.reward(state=state, goal=goal, act=act))
+
+    #         next_state, goal, done, info = env.step(act)
+
+    #         next_state = torch.FloatTensor(next_state)
+    #         goal = torch.FloatTensor(goal)
+
+    #         # TODO: environment specific. Check the environment termination behaviour.
+    #         if train_args.env_max_steps > 0 and len(states) >= train_args.env_max_steps:
+    #             done = True # TODO: make this a case-specific done.
+    #             break
+
+    #         states.append(next_state)
+
+    #         goals.append(goal)
+
+    #         state_and_goal = env.preprocess_state_and_goal_for_policy(state=next_state, goal=goal)
+
+    #         state = next_state
+
+    #     print(f"EPISODE COMPLETE. RETURN: {np.sum(rewards)}")
+
+    buffer = Buffer(
+                state_size=state_size,
+                goal_size=goal_size,
+                act_size=act_size,
+                max_len=train_args.max_buffer_size,
+                )
+
+    env_collector = EnvCollector(
+                        env=env,
+                        buffer=buffer,
+                        min_env_steps=max(train_args.wm_window, train_args.po_window),
+                        max_env_steps=train_args.env_max_steps,
+                        exploration_std=train_args.po_env_exploration,
+                        normalizer_state=None,
+                        normalizer_state_delta=None,
+                        normalizer_action=None,
+                        normalizer_state_and_goal=None,
+                        is_parallel=False, # TODO: True for multiprocessing
+                        collect_device='cpu',
+                        train_device=train_args.device
+                        )
+    env_collector.copy_current_policy(policy)
+
+    n_steps, n_eps, returns = env_collector.collect(train_args.env_steps_per_train)
+
+    print(f"COLLECTED {n_steps} STEPS")
+    print(f"COLLECTED {n_eps} EPISODES")
+
+    print(returns)

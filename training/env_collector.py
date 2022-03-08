@@ -1,3 +1,6 @@
+from this import d
+from typing import Tuple
+
 import copy
 import time
 
@@ -20,6 +23,7 @@ class EnvCollector:
             min_env_steps: int,
             exploration_std: float,
             normalizer_state: Normalizer,
+            normalizer_state_delta: Normalizer,
             normalizer_action: Normalizer,
             normalizer_state_and_goal: Normalizer,
             max_env_steps: int = 0,
@@ -46,6 +50,7 @@ class EnvCollector:
         self.is_parallel = is_parallel
 
         self.normalizer_state = normalizer_state
+        self.normalizer_state_delta = normalizer_state_delta
         self.normalizer_action = normalizer_action
         self.normalizer_state_and_goal = normalizer_state_and_goal
 
@@ -109,6 +114,7 @@ class EnvCollector:
             done = False
 
             states = []
+            dstates = []
             goals = []
             acts = []
 
@@ -122,13 +128,15 @@ class EnvCollector:
 
             while not done:
 
-                act = torch.rand(self.current_policy.action_size)
+                act = torch.randn(self.current_policy.action_size) * self.exploration_std
                 acts.append(act)
                 
-                state, goal, done, info = self.env.step(act)
+                next_state, goal, done, info = self.env.step(act)
 
-                state = torch.FloatTensor(state)
+                next_state = torch.FloatTensor(next_state)
                 goal = torch.FloatTensor(goal)
+                
+                dstates.append(next_state - state)
 
                 # TODO: environment specific. Check the environment termination behaviour.
                 if done and len(states) >= self.min_env_steps:
@@ -139,18 +147,22 @@ class EnvCollector:
                     done = True # TODO: make this a case-specific done.
                     break
 
-                states.append(state)
+                states.append(next_state)
                 goals.append(goal)
+
+                state = next_state
 
             n_steps += len(states)
 
         states = torch.cat([s.unsqueeze(0) for s in states], dim=0)
+        dstates = torch.cat([s.unsqueeze(0) for s in dstates], dim=0)
         goals = torch.cat([g.unsqueeze(0) for g in goals], dim=0)
         acts = torch.cat([a.unsqueeze(0) for a in acts], dim=0)
 
         states_and_goals = self.env.preprocess_state_and_goal_for_policy(state=states, goal=goals)
 
         self.normalizer_state.warmup(states)
+        self.normalizer_state_delta.warmup(dstates)
         self.normalizer_action.warmup(acts)
         self.normalizer_state_and_goal.warmup(states_and_goals)
 
@@ -158,7 +170,7 @@ class EnvCollector:
     def collect(
         self,
         min_num_steps: int,
-    ) -> int:
+    ) -> Tuple[int, int, torch.Tensor]:
         """
         Manually collects from the environment. Used for non-parallel training.
 
@@ -171,7 +183,7 @@ class EnvCollector:
         n_steps = 0
         n_eps = 0
 
-        rewards = []
+        returns = []
 
         while n_steps < min_num_steps:
 
@@ -180,6 +192,7 @@ class EnvCollector:
             states = []
             goals = []
             acts = []
+            rewards = []
 
             state, goal = self.env.reset()
 
@@ -187,12 +200,14 @@ class EnvCollector:
             goal = torch.FloatTensor(goal)
 
             states.append(state)
-            self.normalizer_state += state
+            if self.normalizer_state is not None:
+                self.normalizer_state += state
 
             goals.append(goal)
 
             state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
-            self.normalizer_state_and_goal += state_and_goal
+            if self.normalizer_state_and_goal is not None:
+                self.normalizer_state_and_goal += state_and_goal
 
             while not done:
 
@@ -206,14 +221,18 @@ class EnvCollector:
                     act += torch.randn(act.shape).to(act.device) * self.exploration_std
 
                 acts.append(act)
-                self.normalizer_action += act
+                if self.normalizer_action is not None:
+                    self.normalizer_action += act
 
                 rewards.append(self.env.reward(state=state, goal=goal, act=act))
 
-                state, goal, done, info = self.env.step(act)
+                next_state, goal, done, info = self.env.step(act)
 
-                state = torch.FloatTensor(state)
+                next_state = torch.FloatTensor(next_state)
                 goal = torch.FloatTensor(goal)
+
+                if self.normalizer_state_delta is not None:
+                    self.normalizer_state_delta += (next_state - state)
 
                 # TODO: environment specific. Check the environment termination behaviour.
                 if done and len(states) >= self.min_env_steps:
@@ -224,13 +243,17 @@ class EnvCollector:
                     done = True # TODO: make this a case-specific done.
                     break
 
-                states.append(state)
-                self.normalizer_state += state
+                states.append(next_state)
+                if self.normalizer_state is not None:
+                    self.normalizer_state += next_state
 
                 goals.append(goal)
 
-                state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
-                self.normalizer_state_and_goal += state_and_goal
+                state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=next_state, goal=goal)
+                if self.normalizer_state_and_goal is not None:
+                    self.normalizer_state_and_goal += state_and_goal
+
+                state = next_state
 
             self.buffer.add(
                 state=torch.cat([s.unsqueeze(0) for s in states], dim=0),
@@ -238,7 +261,9 @@ class EnvCollector:
                 act=torch.cat([a.unsqueeze(0) for a in acts], dim=0),
             )
 
+            returns.append(np.sum(rewards))
+
             n_steps += len(states)
             n_eps += 1
 
-        return n_steps, n_eps, torch.FloatTensor(rewards)
+        return n_steps, n_eps, torch.FloatTensor(returns)

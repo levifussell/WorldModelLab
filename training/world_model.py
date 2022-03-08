@@ -22,6 +22,7 @@ class WorldModel(nn.Module):
 
         self.normalizer_state = Normalizer(state_size)
         self.normalizer_action = Normalizer(action_size)
+        self.normalizer_state_delta = Normalizer(state_size)
 
         self.fn_pre_process_state = fn_pre_process_state
         self.fn_post_process_state = fn_post_process_state
@@ -44,13 +45,18 @@ class WorldModel(nn.Module):
     def _state_pre_process(self, state: torch.tensor) -> torch.tensor:
         return self.normalizer_state(self.fn_pre_process_state(state))
 
-    def _state_post_process(self, state: torch.tensor) -> torch.tensor:
-        # return env_collector.normalizer_state(self.fn_post_process_state(state))
-        return self.fn_post_process_state(state)
+    def _state_integrate_and_post_process(self, state_from: torch.tensor, state_delta: torch.tensor) -> torch.tensor:
+        """
+        Integrates the world model predictions forward.
+
+        :param state_from: the state the world model is predicting from.
+        :param state_delta: the change in state the world model has predicted.
+        :return: the predicted next state.
+        """
+        return self.fn_post_process_state(state_from + self.normalizer_state_delta.denormalize(state_delta))
         
     def _action_pre_process(self, action: torch.tensor) -> torch.tensor:
         return self.normalizer_action(self.fn_pre_process_action(action))
-        # return self.fn_pre_process_action(action)
 
     def forward(
             self, 
@@ -77,7 +83,7 @@ class WorldModel(nn.Module):
         x = torch.cat([pre_state_start, pre_action], dim=-1)
 
         pred_resids = [self.model(x)]
-        pred_states = [self._state_post_process(state_start + pred_resids[-1])]
+        pred_states = [self._state_integrate_and_post_process(state_from=state_start, state_delta=pred_resids[-1])]
 
         for i in range(1, window):
             
@@ -87,7 +93,7 @@ class WorldModel(nn.Module):
             x = torch.cat([pre_state_pred, pre_action], dim=-1)
 
             pred_resids.append(self.model(x))
-            pred_states.append(self._state_post_process(pred_states[-1] + pred_resids[-1]))
+            pred_states.append(self._state_integrate_and_post_process(state_from=pred_states[-1], state_delta=pred_resids[-1]))
 
         pred_resids = torch.cat([t.unsqueeze(1) for t in pred_resids], dim=1)
         pred_states = torch.cat([t.unsqueeze(1) for t in pred_states], dim=1)
