@@ -91,9 +91,9 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
         self._task.get_reward(self._physics)
         """
-        cart_position = state[0:1]
-        pole_angle_cosine = state[1:2]
-        angular_vel = state[4:5]
+        cart_position = state[..., 0:1]
+        pole_angle_cosine = state[..., 1:2]
+        angular_vel = state[..., 4:5]
 
         upright = (pole_angle_cosine + 1) / 2  # ~ how upright is the pole
 
