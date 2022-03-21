@@ -79,6 +79,8 @@ def run(
                 fn_pre_process_state=env.preprocess_state_for_world_model,
                 fn_post_process_state=env.postprocess_state_for_world_model,
                 fn_pre_process_action=lambda x: x,
+                activation=train_args.wm_activation,
+                use_spectral_normalization=train_args.wm_use_spectral_norm,
                 ).to(train_args.device)
 
     world_model_opt = opt.RAdam(
@@ -247,22 +249,22 @@ def run(
 
             print("## BEST REWARD POLICY SAVED.")
 
-            #TEMP ---
-            # Reload the policy and determine that it matches.
+            # #TEMP ---
+            # # Reload the policy and determine that it matches.
 
-            temp_policy = Policy(
-                    input_size=po_input_size,
-                    action_size=act_size,
-                    hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
-                    fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
-                    fn_post_process_action=lambda x : x,
-                    )
-            temp_policy.load_from_path(filepath=os.path.join(filepath, f"best_{train_args.name}_rew_policy.pth"))
+            # temp_policy = Policy(
+            #         input_size=po_input_size,
+            #         action_size=act_size,
+            #         hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
+            #         fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
+            #         fn_post_process_action=lambda x : x,
+            #         )
+            # temp_policy.load_from_path(filepath=os.path.join(filepath, f"best_{train_args.name}_rew_policy.pth"))
 
-            for p,q in zip(env_collector.current_policy.parameters(), temp_policy.parameters()):
+            # for p,q in zip(env_collector.current_policy.parameters(), temp_policy.parameters()):
 
-                assert torch.sum(torch.abs(p.cpu().data - q.cpu().data)) == 0
-            #--------
+            #     assert torch.sum(torch.abs(p.cpu().data - q.cpu().data)) == 0
+            # #--------
 
         if result['po_loss_avg'] < best_po_loss:
 
@@ -279,3 +281,4 @@ if __name__ == "__main__":
 
     run(ReacherGoalEnv(), REACHER_TRAIN_ARGS)
     # run(CartpoleBalanceGoalEnv(), CARTPOLE_BALANCE_TRAIN_ARGS)
+    # run(CartpoleBalanceGoalEnv(), REACHER_TRAIN_ARGS)

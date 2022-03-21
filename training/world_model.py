@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from utils.normalizer import Normalizer
+from utils.spectral_normalization import SpectralNorm
 
 class WorldModel(nn.Module):
 
@@ -17,6 +18,8 @@ class WorldModel(nn.Module):
             fn_post_process_state: Callable,
             fn_pre_process_action: Callable,
             final_layer_scale: float = 0.1,
+            activation: str = 'lrelu',
+            use_spectral_normalization: bool = False,
             ) -> None:
         super(WorldModel, self).__init__()
 
@@ -31,14 +34,35 @@ class WorldModel(nn.Module):
         layers = [state_size + action_size]
         layers.extend(hid_layers)
 
+        if use_spectral_normalization and activation != 'lrelu':
+            print("WARNING: using spectral norm without LeakyReLU might fail.")
+
         self.model = []
         for l1,l2 in zip(layers[:-1], layers[1:]):
-            self.model.append(nn.Linear(l1, l2))
-            self.model.append(nn.ELU())
 
-        self.model.append(nn.Linear(layers[-1], state_size))
-        self.model[-1].weight.data.mul_(final_layer_scale)
-        self.model[-1].bias.data.mul_(0.0)
+            if use_spectral_normalization:
+                self.model.append(SpectralNorm(nn.Linear(l1, l2)))
+            else:
+                self.model.append(nn.Linear(l1, l2))
+
+            if activation == 'lrelu':
+                self.model.append(nn.LeakyReLU(negative_slope=0.1))
+            elif activation == 'elu':
+                self.model.append(nn.ELU())
+            else:
+                raise Exception(f"{activation} is not a valid activation.")
+
+        if use_spectral_normalization:
+
+            self.model.append(SpectralNorm(nn.Linear(layers[-1], state_size)))
+            self.model[-1].module.weight_bar.data.mul_(final_layer_scale)
+            self.model[-1].module.bias.data.mul_(0.0)
+
+        else:
+
+            self.model.append(nn.Linear(layers[-1], state_size))
+            self.model[-1].weight.data.mul_(final_layer_scale)
+            self.model[-1].bias.data.mul_(0.0)
 
         self.model = nn.Sequential(*self.model)
 

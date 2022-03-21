@@ -140,6 +140,8 @@ def train_step(
 
     """Train World Model."""
 
+    world_model.train()
+
     def wm_loss_func(W_pred, W_targ, W_resids):
 
         assert W_pred.shape == W_targ.shape
@@ -227,6 +229,9 @@ def train_step(
 
 
     """Train Policy."""
+
+    world_model.eval()
+    policy.train()
 
     def po_loss_func(P_states, P_goals, P_actions):
 

@@ -10,8 +10,8 @@ REACHER_TRAIN_ARGS = {
 
         # train.
 
-    'epochs'                    : 1000, #100,
-    'max_buffer_size'           : 4096*32,#*3,
+    'epochs'                    : 1000,
+    'max_buffer_size'           : 4096*32,
 
         # env.
 
@@ -25,14 +25,17 @@ REACHER_TRAIN_ARGS = {
     'wm_max_grad_skip'          : 100.0,
 
     'wm_train_samples'          : 8192,
-    'wm_minibatch'              : 1024, #128,
+    'wm_minibatch'              : 1024,
 
-    'wm_hid_units'              : 512, #1024,
+    'wm_hid_units'              : 512,
     'wm_hid_layers'             : 2,
     'wm_window'                 : 4,
 
-    'wm_l1_reg'                 : 0.0001, #0.01,
-    'wm_l2_reg'                 : 0.0001, #0.001,
+    'wm_l1_reg'                 : 0.0001,
+    'wm_l2_reg'                 : 0.0001,
+
+    'wm_activation'             : 'elu',
+    'wm_use_spectral_norm'      : False,
 
         # policy.
 
@@ -40,17 +43,17 @@ REACHER_TRAIN_ARGS = {
     'po_max_grad_norm'          : 10.0,
     'po_max_grad_skip'          : 100.0,
 
-    'po_wm_exploration'         : 0.3, #0.05,
+    'po_wm_exploration'         : 0.3, 
     'po_env_exploration'        : 0.3,
 
     'po_train_samples'          : 8192,
-    'po_minibatch'              : 1024, #256,
+    'po_minibatch'              : 1024,
 
-    'po_hid_units'              : 512, #1024,
+    'po_hid_units'              : 512,
     'po_hid_layers'             : 2,
     'po_window'                 : 32,
 
-    'po_l1_reg'                 : 1.0,#0.01,
-    'po_l2_reg'                 : 1.0,#0.001,
+    'po_l1_reg'                 : 1.0,
+    'po_l2_reg'                 : 1.0,
 
 }
