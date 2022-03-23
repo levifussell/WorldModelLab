@@ -88,6 +88,13 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
             ) -> np.array:
         return prev_global_state + state_delta
 
+    def compute_delta_state_world_model(
+            self, 
+            state_from: Union[np.array, torch.tensor],
+            state_to: Union[np.array, torch.tensor],
+            ) -> np.array:
+        return state_to - state_from
+
     def preprocess_state_and_goal_for_policy(
             self,
             state: Union[np.array, torch.tensor],

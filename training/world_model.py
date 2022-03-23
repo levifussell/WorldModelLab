@@ -11,7 +11,7 @@ class WorldModel(nn.Module):
 
     def __init__(
             self,
-            state_size: int,
+            state_input_size: int,
             action_size: int,
             hid_layers: list,
             fn_pre_process_state: Callable,
@@ -20,18 +20,22 @@ class WorldModel(nn.Module):
             final_layer_scale: float = 0.1,
             activation: str = 'lrelu',
             use_spectral_normalization: bool = False,
+            state_output_size: int = -1,
             ) -> None:
         super(WorldModel, self).__init__()
 
-        self.normalizer_state = Normalizer(state_size)
+        if state_output_size == -1:
+            state_output_size = state_input_size
+
+        self.normalizer_state = Normalizer(state_input_size)
         self.normalizer_action = Normalizer(action_size)
-        self.normalizer_state_delta = Normalizer(state_size)
+        self.normalizer_state_delta = Normalizer(state_output_size)
 
         self.fn_pre_process_state = fn_pre_process_state
         self.fn_post_process_state = fn_post_process_state
         self.fn_pre_process_action = fn_pre_process_action
 
-        layers = [state_size + action_size]
+        layers = [state_input_size + action_size]
         layers.extend(hid_layers)
 
         if use_spectral_normalization and activation != 'lrelu':
@@ -54,13 +58,13 @@ class WorldModel(nn.Module):
 
         if use_spectral_normalization:
 
-            self.model.append(SpectralNorm(nn.Linear(layers[-1], state_size)))
+            self.model.append(SpectralNorm(nn.Linear(layers[-1], state_output_size)))
             self.model[-1].module.weight_bar.data.mul_(final_layer_scale)
             self.model[-1].module.bias.data.mul_(0.0)
 
         else:
 
-            self.model.append(nn.Linear(layers[-1], state_size))
+            self.model.append(nn.Linear(layers[-1], state_output_size))
             self.model[-1].weight.data.mul_(final_layer_scale)
             self.model[-1].bias.data.mul_(0.0)
 

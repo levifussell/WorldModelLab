@@ -78,7 +78,7 @@ def run(
     """ Build World Model"""
 
     world_model = WorldModel(
-                state_size=state_size,
+                state_input_size=state_size,
                 action_size=act_size,
                 hid_layers=[train_args.wm_hid_units] * train_args.wm_hid_layers,
                 fn_pre_process_state=env.preprocess_state_for_world_model,

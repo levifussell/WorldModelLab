@@ -136,7 +136,7 @@ class EnvCollector:
                 next_state = torch.FloatTensor(next_state)
                 goal = torch.FloatTensor(goal)
                 
-                dstates.append(next_state - state)
+                dstates.append(self.env.compute_delta_state_world_model(state_from=state, state_to=next_state))
 
                 # TODO: environment specific. Check the environment termination behaviour.
                 if done and len(states) >= self.min_env_steps:
@@ -234,7 +234,7 @@ class EnvCollector:
                 goal = torch.FloatTensor(goal)
 
                 if self.normalizer_state_delta is not None:
-                    self.normalizer_state_delta += (next_state - state)
+                    self.normalizer_state_delta += self.env.compute_delta_state_world_model(state_from=state, state_to=next_state)
 
                 # TODO: environment specific. Check the environment termination behaviour.
                 if done and len(states) >= self.min_env_steps:
