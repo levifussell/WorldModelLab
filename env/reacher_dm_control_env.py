@@ -83,10 +83,10 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
     def postprocess_state_for_world_model(
             self, 
-            state_prev: Union[np.array, torch.tensor],
+            prev_global_state: Union[np.array, torch.tensor],
             state_delta: Union[np.array, torch.tensor],
             ) -> np.array:
-        return state_prev + state_delta
+        return prev_global_state + state_delta
 
     def preprocess_state_and_goal_for_policy(
             self,

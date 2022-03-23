@@ -49,12 +49,13 @@ class GoalEnv(ABC):
     @abstractmethod
     def postprocess_state_for_world_model(
             self, 
-            state_prev: Union[np.array, torch.tensor],
+            prev_global_state: Union[np.array, torch.tensor],
             state_delta: Union[np.array, torch.tensor],
             ) -> np.array:
         """
         Converts the local state from the world model into the global state.
 
+        :param prev_global_state: previous global state of the world model.
         :param state: local world model state.
         :return: global state.
         """
