@@ -2,6 +2,7 @@ from fileinput import filename
 import os
 import platform
 from datetime import datetime
+from typing import Callable
 
 import numpy as np
 import torch
@@ -9,6 +10,8 @@ import torch.nn as nn
 import torch.optim as opt
 from torch.utils.tensorboard import SummaryWriter
 from torchsummary import summary
+
+from PIL import Image
 
 from training.policy import Policy
 from training.world_model import WorldModel
@@ -22,7 +25,7 @@ from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
 from env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
 
 def run(
-    env=None, train_args=DEFAULT_TRAIN_ARGS,
+    f_env: Callable = None, train_args=DEFAULT_TRAIN_ARGS,
 ):
 
     train_args = TrainArgs(train_args)
@@ -35,6 +38,8 @@ def run(
     torch.manual_seed(train_args.seed)
 
     """ Setup Environment/Gym """
+
+    env = f_env(render=train_args.save_renders)
 
     state_size = env.state_size
     goal_size = env.goal_size
@@ -141,7 +146,7 @@ def run(
         # collect environment.
 
         if not env_collector.is_parallel:
-            n_steps, n_eps, returns = env_collector.collect(train_args.env_steps_per_train)
+            n_steps, n_eps, returns, _ = env_collector.collect(train_args.env_steps_per_train)
 
             print(f"COLLECTED {n_steps} STEPS")
             print(f"COLLECTED {n_eps} EPISODES")
@@ -277,8 +282,24 @@ def run(
 
             print("## BEST LOSS POLICY SAVED.")
 
+        # SAVE RENDERS.
+
+        if train_args.save_renders:
+
+            print("COLLECTING RENDER.")
+
+            n_steps, n_eps, returns, frame_renders = env_collector.collect(train_args.env_max_steps)
+
+            im_dir = os.path.join(log_path, "frame_renders", f"epoch_{e}")
+            os.makedirs(im_dir, exist_ok=True)
+
+            for i,f in enumerate(frame_renders):
+
+                im = Image.fromarray(f)
+                im.save(os.path.join(im_dir, f"frame_{i}.jpg"))
+
 if __name__ == "__main__":
 
-    run(ReacherGoalEnv(), REACHER_TRAIN_ARGS)
+    run(ReacherGoalEnv, REACHER_TRAIN_ARGS)
     # run(CartpoleBalanceGoalEnv(), CARTPOLE_BALANCE_TRAIN_ARGS)
     # run(CartpoleBalanceGoalEnv(), REACHER_TRAIN_ARGS)

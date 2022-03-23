@@ -185,6 +185,8 @@ class EnvCollector:
 
         returns = []
 
+        render_frames = []
+
         while n_steps < min_num_steps:
 
             done = False
@@ -263,7 +265,10 @@ class EnvCollector:
 
             returns.append(np.sum(rewards))
 
+            if self.env.render:
+                render_frames.extend(self.env.frames)
+
             n_steps += len(states)
             n_eps += 1
 
-        return n_steps, n_eps, torch.FloatTensor(returns)
+        return n_steps, n_eps, torch.FloatTensor(returns), render_frames

@@ -22,7 +22,7 @@ from dm_control.utils import io as resources
 
 class ReacherGoalEnv(ControlSuiteGoalEnv):
 
-    def __init__(self, max_steps: int = -1):
+    def __init__(self, max_steps: int = -1, render: bool = False):
 
         # def wm_reacher(**environment_kwargs):
         #     # physics = Physics.from_xml_string("./env/model_files/reacher.xml", common.ASSETS)
@@ -33,7 +33,7 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
         #     return control.Environment(
         #         physics, task, time_limit=_DEFAULT_TIME_LIMIT, **environment_kwargs)
 
-        super().__init__(task_build_func=build_reacher_task, max_steps=max_steps)
+        super().__init__(task_build_func=build_reacher_task, max_steps=max_steps, render=render)
         # super().__init__(task_build_func=wm_reacher)
 
         # # import pdb; pdb.set_trace()
@@ -83,9 +83,10 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
     def postprocess_state_for_world_model(
             self, 
-            state: Union[np.array, torch.tensor]
+            state_prev: Union[np.array, torch.tensor],
+            state_delta: Union[np.array, torch.tensor],
             ) -> np.array:
-        return state
+        return state_prev + state_delta
 
     def preprocess_state_and_goal_for_policy(
             self,

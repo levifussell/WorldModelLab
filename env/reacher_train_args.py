@@ -7,6 +7,7 @@ REACHER_TRAIN_ARGS = {
     'device'                    : 'cuda',
     'logdir'                    : 'runs/',
     'deep_stats'                : False,
+    'save_renders'              : True,
 
         # train.
 

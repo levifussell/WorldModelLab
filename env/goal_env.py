@@ -14,7 +14,11 @@ class GoalEnv(ABC):
     def __init__(
         self,
         env_gym,
+        render: bool = False
         ) -> None:
+
+        self.render = render
+        self.frames = []
 
         self._env_gym = env_gym
 
@@ -32,7 +36,7 @@ class GoalEnv(ABC):
     @abstractmethod
     def preprocess_state_for_world_model(
             self, 
-            state: Union[np.array, torch.tensor]
+            state: Union[np.array, torch.tensor],
             ) -> np.array:
         """
         Converts the global state into a local state for the world model.
@@ -45,7 +49,8 @@ class GoalEnv(ABC):
     @abstractmethod
     def postprocess_state_for_world_model(
             self, 
-            state: Union[np.array, torch.tensor]
+            state_prev: Union[np.array, torch.tensor],
+            state_delta: Union[np.array, torch.tensor],
             ) -> np.array:
         """
         Converts the local state from the world model into the global state.
@@ -115,11 +120,12 @@ class ControlSuiteGoalEnv(GoalEnv):
             self,
             task_build_func: Callable,
             max_steps: int = -1,
+            render: bool = False,
             ) -> None:
         """
         :param max_steps: maximium environment steps, usually for testing.
         """
-        super().__init__(env_gym=task_build_func())
+        super().__init__(env_gym=task_build_func(), render=render)
 
         self._physics = self._env_gym._physics
         self._task = self._env_gym.task
@@ -175,6 +181,9 @@ class ControlSuiteGoalEnv(GoalEnv):
         if self._max_steps > 0 and self._nsteps >= self._max_steps:
             done = True
 
+        if self.render:
+            self.frames.append(self._physics.render(camera_id=0, height=200, width=200))
+
         return global_state, global_goal, done, info
 
     def reset(self):
@@ -184,5 +193,9 @@ class ControlSuiteGoalEnv(GoalEnv):
         # done = timestep.last()
 
         global_state, global_goal = self.get_curr_global_state_and_goal()
+
+        if self.render:
+            self.frames.clear()
+            self.frames.append(self._physics.render(camera_id=0, height=200, width=200))
 
         return global_state, global_goal #, done
