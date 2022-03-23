@@ -1,6 +1,12 @@
 from this import d
 from typing import Tuple
 
+import os
+import sys
+
+curdir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.dirname(curdir))
+
 import copy
 import time
 

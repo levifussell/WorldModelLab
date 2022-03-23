@@ -1,7 +1,14 @@
 from typing import Callable, Union, Tuple
 
+import os
+import sys
+
+curdir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.dirname(curdir))
+
 import torch
 import torch.nn as nn
+from training.world_model import WorldModel
 
 from utils.normalizer import Normalizer
 
