@@ -59,47 +59,47 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
     def get_curr_global_state_and_goal(
             self,
-            ) -> Tuple[np.array, np.array]:
+            ) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        target_pos = self._physics.named.data.geom_xpos['target', :2]
-        finger_pos = self._physics.named.data.geom_xpos['finger', :2]
-        joint_angs = self._physics.position()
-        joint_vels = self._physics.velocity()
+        target_pos = torch.FloatTensor(self._physics.named.data.geom_xpos['target', :2])
+        finger_pos = torch.FloatTensor(self._physics.named.data.geom_xpos['finger', :2])
+        joint_angs = torch.FloatTensor(self._physics.position())
+        joint_vels = torch.FloatTensor(self._physics.velocity())
 
         # TODO: this contains 'extra' info: the finger_pos, which is non local.
         #  we can only extract this from the environment with FK on the joints,
         #  so we'd have to run it through the MuJoCo physics which might be
         #  expensive. 
-        state = np.concatenate([finger_pos, joint_angs, joint_vels], axis=-1)
-        goal = np.concatenate([target_pos], axis=-1)
+        state = torch.cat([finger_pos, joint_angs, joint_vels], dim=-1)
+        goal = torch.cat([target_pos], dim=-1)
 
         return state, goal
 
     def preprocess_state_for_world_model(
             self, 
-            state: Union[np.array, torch.tensor]
-            ) -> np.array:
+            state: torch.Tensor,
+            ) -> torch.Tensor:
         return state
 
     def postprocess_state_for_world_model(
             self, 
-            prev_global_state: Union[np.array, torch.tensor],
-            state_delta: Union[np.array, torch.tensor],
-            ) -> np.array:
+            prev_global_state: torch.Tensor,
+            state_delta: torch.Tensor,
+            ) -> torch.Tensor:
         return prev_global_state + state_delta
 
     def compute_delta_state_world_model(
             self, 
-            state_from: Union[np.array, torch.tensor],
-            state_to: Union[np.array, torch.tensor],
-            ) -> np.array:
+            state_from: torch.Tensor,
+            state_to: torch.Tensor,
+            ) -> torch.Tensor:
         return state_to - state_from
 
     def preprocess_state_and_goal_for_policy(
             self,
-            state: Union[np.array, torch.tensor],
-            goal: Union[np.array, torch.tensor],
-            ) -> np.array:
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            ) -> torch.Tensor:
 
         target_pos = goal[...,:2]
         finger_pos = state[...,:2]
@@ -108,47 +108,24 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
         to_target = target_pos - finger_pos
 
-        if isinstance(state, torch.Tensor):
-
-            return torch.cat([joint_angs, to_target, joint_vels], dim=-1)
-
-        elif isinstance(state, np.ndarray):
-
-            return np.concatenate([joint_angs, to_target, joint_vels], axis=-1)
-
-        else:
-            raise Exception("Invalid state type.")
+        return torch.cat([joint_angs, to_target, joint_vels], dim=-1)
 
     def reward(
             self, 
-            state: Union[np.array, torch.tensor], 
-            goal: Union[np.array, torch.tensor],
-            act: Union[np.array, torch.tensor],
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            act: torch.Tensor,
             ) -> float:
 
         finger_pos = state[...,:2]
         radii = self._physics.named.model.geom_size[['target', 'finger'], 0].sum()
 
-        if isinstance(state, torch.Tensor):
-
-            finger_to_target_dist = torch.norm(goal[...,:2] - finger_pos, p=2, dim=-1)
-            # return (finger_to_target_dist e= radii).float()
-            # TODO: below is incorrect, it is a smoothed loss.
-            # return torch.clamp(finger_to_target_dist, min=0, max=radii) #/ radii
-            # return 1.0 / (finger_to_target_dist + 0.1) #/ radii
-            return torch.exp(-10.0 * finger_to_target_dist) #/ radii
-
-
-        elif isinstance(state, np.ndarray):
-
-            # finger_to_target_dist = np.linalg.norm(goal[...,:2] - finger_pos, axis=-1)
-            # return rewards.tolerance(finger_to_target_dist, (0, radii))
-            # TODO: below is incorrect.
-            finger_to_target_dist = np.linalg.norm(goal[...,:2] - finger_pos, axis=-1)
-            return np.exp(-10.0 * finger_to_target_dist) #/ radii
-
-        else:
-            raise Exception("Invalid state type.")
+        finger_to_target_dist = torch.norm(goal[...,:2] - finger_pos, p=2, dim=-1)
+        # return (finger_to_target_dist e= radii).float()
+        # TODO: below is incorrect, it is a smoothed loss.
+        # return torch.clamp(finger_to_target_dist, min=0, max=radii) #/ radii
+        # return 1.0 / (finger_to_target_dist + 0.1) #/ radii
+        return torch.exp(-10.0 * finger_to_target_dist) #/ radii
 
 if __name__ == "__main__":
 

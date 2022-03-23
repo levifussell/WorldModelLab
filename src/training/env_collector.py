@@ -120,9 +120,6 @@ class EnvCollector:
 
             state, goal = self.env.reset()
 
-            state = torch.FloatTensor(state)
-            goal = torch.FloatTensor(goal)
-
             states.append(state)
             goals.append(goal)
 
@@ -133,9 +130,6 @@ class EnvCollector:
                 
                 next_state, goal, done, info = self.env.step(act)
 
-                next_state = torch.FloatTensor(next_state)
-                goal = torch.FloatTensor(goal)
-                
                 dstates.append(self.env.compute_delta_state_world_model(state_from=state, state_to=next_state))
 
                 # TODO: environment specific. Check the environment termination behaviour.
@@ -198,9 +192,6 @@ class EnvCollector:
 
             state, goal = self.env.reset()
 
-            state = torch.FloatTensor(state)
-            goal = torch.FloatTensor(goal)
-
             states.append(state)
             if self.normalizer_state is not None:
                 self.normalizer_state += state
@@ -229,9 +220,6 @@ class EnvCollector:
                 rewards.append(self.env.reward(state=state, goal=goal, act=act))
 
                 next_state, goal, done, info = self.env.step(act)
-
-                next_state = torch.FloatTensor(next_state)
-                goal = torch.FloatTensor(goal)
 
                 if self.normalizer_state_delta is not None:
                     self.normalizer_state_delta += self.env.compute_delta_state_world_model(state_from=state, state_to=next_state)

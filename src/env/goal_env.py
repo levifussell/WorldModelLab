@@ -25,7 +25,7 @@ class GoalEnv(ABC):
     @abstractmethod
     def get_curr_global_state_and_goal(
             self,
-            ) -> Tuple[np.array, np.array]:
+            ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Computes the global state and global goal of the environment.
 
@@ -36,8 +36,8 @@ class GoalEnv(ABC):
     @abstractmethod
     def preprocess_state_for_world_model(
             self, 
-            state: Union[np.array, torch.tensor],
-            ) -> np.array:
+            state: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the global state into a local state for the world model.
 
@@ -49,9 +49,9 @@ class GoalEnv(ABC):
     @abstractmethod
     def postprocess_state_for_world_model(
             self, 
-            prev_global_state: Union[np.array, torch.tensor],
-            state_delta: Union[np.array, torch.tensor],
-            ) -> np.array:
+            prev_global_state: torch.Tensor,
+            state_delta: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the local state from the world model into the global state.
 
@@ -64,9 +64,9 @@ class GoalEnv(ABC):
     @abstractmethod
     def compute_delta_state_world_model(
             self, 
-            state_from: Union[np.array, torch.tensor],
-            state_to: Union[np.array, torch.tensor],
-            ) -> np.array:
+            state_from: torch.Tensor,
+            state_to: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Computes the difference between two states of the world model.
         In general, this will just be a Euclidean difference.
@@ -80,9 +80,9 @@ class GoalEnv(ABC):
     @abstractmethod
     def preprocess_state_and_goal_for_policy(
             self,
-            state: Union[np.array, torch.tensor],
-            goal: Union[np.array, torch.tensor],
-            ) -> np.array:
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the global state and goal into a local input state for
             the policy.
@@ -96,9 +96,9 @@ class GoalEnv(ABC):
     @abstractmethod
     def reward(
             self,
-            state: np.array,
-            goal: np.array,
-            act: np.array,
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            act: torch.Tensor,
             ) -> float:
         """
         Computes the reward given the state, goal, and action.
@@ -108,7 +108,7 @@ class GoalEnv(ABC):
     @abstractmethod
     def step(
             self,
-            act: np.array,
+            act: torch.Tensor,
             ):
         """
         Takes a step in the environment.
