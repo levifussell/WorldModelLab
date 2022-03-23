@@ -16,7 +16,7 @@ from .env_collector import EnvCollector
 from .policy import Policy
 from .world_model import WorldModel
 
-from utils.utils import grad_layer_norm, compute_per_rollout_wm_gradient, compute_per_rollout_po_gradient
+from ..utils.utils import grad_layer_norm, compute_per_rollout_wm_gradient, compute_per_rollout_po_gradient
 
 DEFAULT_TRAIN_ARGS = {
 

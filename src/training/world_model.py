@@ -1,17 +1,11 @@
 from typing import Union, Callable
 from grpc import Call
 
-import os
-import sys
-
-curdir = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(os.path.dirname(curdir))
-
 import torch
 import torch.nn as nn
 
-from utils.normalizer import Normalizer
-from utils.spectral_normalization import SpectralNorm
+from ..utils.normalizer import Normalizer
+from ..utils.spectral_normalization import SpectralNorm
 
 class WorldModel(nn.Module):
 

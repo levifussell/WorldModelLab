@@ -13,16 +13,16 @@ from torchsummary import summary
 
 from PIL import Image
 
-from training.policy import Policy
-from training.world_model import WorldModel
-from training.env_collector import EnvCollector
-from training.buffer import Buffer
-from training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
+from src.training.policy import Policy
+from src.training.world_model import WorldModel
+from src.training.env_collector import EnvCollector
+from src.training.buffer import Buffer
+from src.training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
 
-from env.reacher_dm_control_env import ReacherGoalEnv
-from env.reacher_train_args import REACHER_TRAIN_ARGS
-from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
-from env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
+from src.env.reacher_dm_control_env import ReacherGoalEnv
+from src.env.reacher_train_args import REACHER_TRAIN_ARGS
+from src.env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
+from src.env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
 
 def run(
     f_env: Callable = None, train_args=DEFAULT_TRAIN_ARGS,

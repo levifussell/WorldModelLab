@@ -1,24 +1,18 @@
 from this import d
 from typing import Tuple
 
-import os
-import sys
-
-curdir = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(os.path.dirname(curdir))
-
 import copy
 import time
 
 import numpy as np
 import torch
 
-from utils.normalizer import Normalizer
+from ..utils.normalizer import Normalizer
 
 from .buffer import Buffer
 from .buffer_iterator import BufferIterator
 
-from env.goal_env import GoalEnv
+from ..env.goal_env import GoalEnv
 
 class EnvCollector:
 
