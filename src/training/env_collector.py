@@ -123,7 +123,7 @@ class EnvCollector:
             states.append(state)
             goals.append(goal)
 
-            while not done:
+            while True:
 
                 act = torch.randn(self.current_policy.action_size) * self.exploration_std
                 acts.append(act)
@@ -148,10 +148,10 @@ class EnvCollector:
 
             n_steps += len(states)
 
-        states = torch.cat([s.unsqueeze(0) for s in states], dim=0)
-        dstates = torch.cat([s.unsqueeze(0) for s in dstates], dim=0)
-        goals = torch.cat([g.unsqueeze(0) for g in goals], dim=0)
-        acts = torch.cat([a.unsqueeze(0) for a in acts], dim=0)
+        states = torch.cat([s.reshape(1,-1) for s in states], dim=0)
+        dstates = torch.cat([s.reshape(1,-1) for s in dstates], dim=0)
+        goals = torch.cat([g.reshape(1,-1) for g in goals], dim=0)
+        acts = torch.cat([a.reshape(1,-1) for a in acts], dim=0)
 
         states_and_goals = self.env.preprocess_state_and_goal_for_policy(state=states, goal=goals)
 
@@ -202,7 +202,7 @@ class EnvCollector:
             if self.normalizer_state_and_goal is not None:
                 self.normalizer_state_and_goal += state_and_goal
 
-            while not done:
+            while True:
 
                 with torch.no_grad():
 
