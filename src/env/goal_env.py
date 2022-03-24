@@ -136,7 +136,6 @@ class ControlSuiteGoalEnv(GoalEnv):
     def __init__(
             self,
             task_build_func: Callable,
-            max_steps: int = -1,
             render: bool = False,
             ) -> None:
         """
@@ -148,9 +147,6 @@ class ControlSuiteGoalEnv(GoalEnv):
         self._task = self._env_gym.task
 
         self._env_gym._flat_observation = False  
-
-        self._max_steps = max_steps
-        self._nsteps = 0
 
     @property
     def action_size(self):
@@ -182,21 +178,16 @@ class ControlSuiteGoalEnv(GoalEnv):
 
     def step(
             self,
-            act: np.array,
+            act: torch.Tensor,
             ):
 
-        timestep = self._env_gym.step(act) 
+        timestep = self._env_gym.step(act.flatten().numpy()) 
 
         done = timestep.last()
 
         global_state, global_goal = self.get_curr_global_state_and_goal()
 
         info = {}
-
-        self._nsteps += 1
-
-        if self._max_steps > 0 and self._nsteps >= self._max_steps:
-            done = True
 
         if self.render:
             self.frames.append(self._physics.render(camera_id=0, height=200, width=200))

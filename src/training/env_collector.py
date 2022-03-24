@@ -246,9 +246,9 @@ class EnvCollector:
                 state = next_state
 
             self.buffer.add(
-                state=torch.cat([s.unsqueeze(0) for s in states], dim=0),
-                goal=torch.cat([g.unsqueeze(0) for g in goals], dim=0),
-                act=torch.cat([a.unsqueeze(0) for a in acts], dim=0),
+                state=torch.cat([s.reshape(1,-1) for s in states], dim=0),
+                goal=torch.cat([g.reshape(1,-1) for g in goals], dim=0),
+                act=torch.cat([a.reshape(1,-1) for a in acts], dim=0),
             )
 
             returns.append(np.sum(rewards))
