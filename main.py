@@ -113,10 +113,10 @@ def run(
                         min_env_steps=max(train_args.wm_window, train_args.po_window),
                         max_env_steps=train_args.env_max_steps,
                         exploration_std=train_args.po_env_exploration,
-                        normalizer_state=world_model.normalizer_state,
-                        normalizer_state_delta=world_model.normalizer_state_delta,
-                        normalizer_action=world_model.normalizer_action,
-                        normalizer_state_and_goal=policy.normalizer_state_and_goal,
+                        normalizer_wm_state=world_model.normalizer_state,
+                        normalizer_wm_state_delta=world_model.normalizer_state_delta,
+                        normalizer_wm_action=world_model.normalizer_action,
+                        normalizer_po_state_and_goal=policy.normalizer_state_and_goal,
                         is_parallel=False, # TODO: True for multiprocessing
                         collect_device='cpu',
                         train_device=train_args.device
@@ -202,17 +202,17 @@ def run(
         writer.add_scalar('learning/policy_lr', result['po_lr'], global_step=e)
         writer.add_scalar('learning/world_model_lr', result['wm_lr'], global_step=e)
 
-        writer.add_scalar('inputs/state_scale_mean', env_collector.normalizer_state.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/state_scale_std', env_collector.normalizer_state.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_scale_mean', env_collector.normalizer_wm_state.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_scale_std', env_collector.normalizer_wm_state.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/state_delta_mean', env_collector.normalizer_state_delta.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/state_delta_std', env_collector.normalizer_state_delta.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_delta_mean', env_collector.normalizer_wm_state_delta.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_delta_std', env_collector.normalizer_wm_state_delta.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/act_scale_mean', env_collector.normalizer_action.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/act_scale_std', env_collector.normalizer_action.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/act_scale_mean', env_collector.normalizer_wm_action.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/act_scale_std', env_collector.normalizer_wm_action.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/state_and_goal_mean', env_collector.normalizer_state_and_goal.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/state_and_goal_std', env_collector.normalizer_state_and_goal.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_and_goal_mean', env_collector.normalizer_po_state_and_goal.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_and_goal_std', env_collector.normalizer_po_state_and_goal.accum_std.norm(p=2), global_step=e)
 
         writer.add_scalar('models/po_weight_scale', result['po_weight_scale'], global_step=e)
         writer.add_scalar('models/po_weight_max', result['po_weight_max'], global_step=e)

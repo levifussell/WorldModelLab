@@ -22,10 +22,10 @@ class EnvCollector:
             buffer: Buffer,
             min_env_steps: int,
             exploration_std: float,
-            normalizer_state: Normalizer,
-            normalizer_state_delta: Normalizer,
-            normalizer_action: Normalizer,
-            normalizer_state_and_goal: Normalizer,
+            normalizer_wm_state: Normalizer,
+            normalizer_wm_state_delta: Normalizer,
+            normalizer_wm_action: Normalizer,
+            normalizer_po_state_and_goal: Normalizer,
             max_env_steps: int = 0,
             collect_device: str = 'cpu',
             train_device: str = 'cuda',
@@ -49,10 +49,10 @@ class EnvCollector:
         self.train_device = train_device
         self.is_parallel = is_parallel
 
-        self.normalizer_state = normalizer_state
-        self.normalizer_state_delta = normalizer_state_delta
-        self.normalizer_action = normalizer_action
-        self.normalizer_state_and_goal = normalizer_state_and_goal
+        self.normalizer_wm_state = normalizer_wm_state
+        self.normalizer_wm_state_delta = normalizer_wm_state_delta
+        self.normalizer_wm_action = normalizer_wm_action
+        self.normalizer_po_state_and_goal = normalizer_po_state_and_goal
 
         self.current_policy = None
 
@@ -155,10 +155,10 @@ class EnvCollector:
 
         states_and_goals = self.env.preprocess_state_and_goal_for_policy(state=states, goal=goals)
 
-        self.normalizer_state.warmup(states)
-        self.normalizer_state_delta.warmup(dstates)
-        self.normalizer_action.warmup(acts)
-        self.normalizer_state_and_goal.warmup(states_and_goals)
+        self.normalizer_wm_state.warmup(states)
+        self.normalizer_wm_state_delta.warmup(dstates)
+        self.normalizer_wm_action.warmup(acts)
+        self.normalizer_po_state_and_goal.warmup(states_and_goals)
 
 
     def collect(
@@ -193,14 +193,14 @@ class EnvCollector:
             state, goal = self.env.reset()
 
             states.append(state)
-            if self.normalizer_state is not None:
-                self.normalizer_state += state
+            if self.normalizer_wm_state is not None:
+                self.normalizer_wm_state += self.env.preprocess_state_for_world_model(state)
 
             goals.append(goal)
 
             state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=state, goal=goal)
-            if self.normalizer_state_and_goal is not None:
-                self.normalizer_state_and_goal += state_and_goal
+            if self.normalizer_po_state_and_goal is not None:
+                self.normalizer_po_state_and_goal += state_and_goal
 
             while True:
 
@@ -214,15 +214,15 @@ class EnvCollector:
                     act += torch.randn(act.shape).to(act.device) * self.exploration_std
 
                 acts.append(act)
-                if self.normalizer_action is not None:
-                    self.normalizer_action += act
+                if self.normalizer_wm_action is not None:
+                    self.normalizer_wm_action += act
 
                 rewards.append(self.env.reward(state=state, goal=goal, act=act))
 
                 next_state, goal, done, info = self.env.step(act)
 
-                if self.normalizer_state_delta is not None:
-                    self.normalizer_state_delta += self.env.compute_delta_state_world_model(state_from=state, state_to=next_state)
+                if self.normalizer_wm_state_delta is not None:
+                    self.normalizer_wm_state_delta += self.env.compute_delta_state_world_model(state_from=state, state_to=next_state)
 
                 # TODO: environment specific. Check the environment termination behaviour.
                 if done and len(states) >= self.min_env_steps:
@@ -234,14 +234,14 @@ class EnvCollector:
                     break
 
                 states.append(next_state)
-                if self.normalizer_state is not None:
-                    self.normalizer_state += next_state
+                if self.normalizer_wm_state is not None:
+                    self.normalizer_wm_state += self.env.preprocess_state_for_world_model(next_state)
 
                 goals.append(goal)
 
                 state_and_goal = self.env.preprocess_state_and_goal_for_policy(state=next_state, goal=goal)
-                if self.normalizer_state_and_goal is not None:
-                    self.normalizer_state_and_goal += state_and_goal
+                if self.normalizer_po_state_and_goal is not None:
+                    self.normalizer_po_state_and_goal += state_and_goal
 
                 state = next_state
 
