@@ -9,13 +9,13 @@ from dm_control import suite
 from dm_control import viewer
 from dm_control.utils import rewards
 
-from training.train import TrainArgs, DEFAULT_TRAIN_ARGS
-from training.policy import Policy
-from training.buffer import Buffer
-from training.env_collector import EnvCollector
+from src.training.train import TrainArgs, DEFAULT_TRAIN_ARGS
+from src.training.policy import Policy
+from src.training.buffer import Buffer
+from src.training.env_collector import EnvCollector
 
-from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
-from env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
+from src.env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
+from src.env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
 
 from enum import Enum
 
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     act_size = env.action_size
     po_input_size = env.policy_input_size
 
-    po_filename = f"runs/models/best_{train_args.name}_loss_policy.pth"
+    po_filename = f"runs/models/best_{train_args.name}_rew_policy.pth"
 
     policy = Policy(
         input_size=po_input_size,
