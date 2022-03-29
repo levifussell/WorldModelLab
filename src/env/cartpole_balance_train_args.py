@@ -4,9 +4,10 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
 
     'seed'                      : 1234,
     'name'                      : 'cartpole_balance',
-    'device'                    : 'cpu',
+    'device'                    : 'cuda',
     'logdir'                    : 'runs/',
     'deep_stats'                : False,
+    'save_renders'              : False,
 
         # train.
 
@@ -33,6 +34,9 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
 
     'wm_l1_reg'                 : 0.0001, #0.01,
     'wm_l2_reg'                 : 0.0001, #0.001,
+
+    'wm_activation'             : 'elu',
+    'wm_use_spectral_norm'      : False,
 
         # policy.
 

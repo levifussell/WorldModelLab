@@ -301,5 +301,4 @@ def run(
 if __name__ == "__main__":
 
     run(ReacherGoalEnv, REACHER_TRAIN_ARGS)
-    # run(CartpoleBalanceGoalEnv(), CARTPOLE_BALANCE_TRAIN_ARGS)
-    # run(CartpoleBalanceGoalEnv(), REACHER_TRAIN_ARGS)
+    # run(CartpoleBalanceGoalEnv, CARTPOLE_BALANCE_TRAIN_ARGS)

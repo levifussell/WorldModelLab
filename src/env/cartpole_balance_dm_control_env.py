@@ -2,8 +2,8 @@ from typing import Tuple, Union
 import numpy as np
 import torch
 
-from env.goal_env import ControlSuiteGoalEnv
-from utils import rewards
+from src.env.goal_env import ControlSuiteGoalEnv
+from src.utils import rewards
 
 from dm_control.suite.cartpole import balance as build_cartpole_balance
 from dm_control.rl import control
@@ -16,12 +16,12 @@ from dm_control import viewer
 
 class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
-    def __init__(self):
-        super().__init__(task_build_func=build_cartpole_balance)
+    def __init__(self, render: bool = False):
+        super().__init__(task_build_func=build_cartpole_balance, render=render)
 
     def get_curr_global_state_and_goal(
             self,
-            ) -> Tuple[np.array, np.array]:
+            ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Following Barto et al. (1983) - Neuronlike adaptive elements that can solve difficult learning control problems
         http://www.derongliu.org/adp/adp-cdrom/Barto1983.pdf
@@ -31,16 +31,16 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
         - cart velocity
         - rate of change of the angle (angular velocity?)
         """
-        positions = self._physics.bounded_position()  # 3D, (cart_position, cos(pole_angle), sin(pole_angle))
-        velocities = self._physics.velocity()  # 2D, (cart_velocity??, pole_angular_velocity)
-        state = np.hstack([positions, velocities])
-        goal = np.array([])  # No goal/target to aim for
+        positions = torch.FloatTensor(self._physics.bounded_position())  # 3D, (cart_position, cos(pole_angle), sin(pole_angle))
+        velocities = torch.FloatTensor(self._physics.velocity())  # 2D, (cart_velocity??, pole_angular_velocity)
+        state = torch.hstack([positions, velocities])
+        goal = torch.tensor([])  # No goal/target to aim for
         return state, goal
 
     def preprocess_state_for_world_model(
             self,
-            state: Union[np.array, torch.tensor]
-            ) -> np.array:
+            state: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the global state into a local state for the world model.
 
@@ -51,9 +51,9 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
     def postprocess_state_for_world_model(
             self,
-            prev_global_state: Union[np.array, torch.tensor],
-            state_delta: Union[np.array, torch.tensor],
-            ) -> np.array:
+            prev_global_state: torch.Tensor,
+            state_delta: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the local state from the world model into the global state.
 
@@ -63,10 +63,10 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
         return prev_global_state + state_delta
 
     def compute_delta_state_world_model(
-            self, 
-            state_from: Union[np.array, torch.tensor],
-            state_to: Union[np.array, torch.tensor],
-            ) -> np.array:
+            self,
+            state_from: torch.Tensor,
+            state_to: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Computes the difference between two states of the world model.
         In general, this will just be a Euclidean difference.
@@ -79,9 +79,9 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
     def preprocess_state_and_goal_for_policy(
             self,
-            state: Union[np.array, torch.tensor],
-            goal: Union[np.array, torch.tensor],
-            ) -> np.array:
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the global state and goal into a local input state for
             the policy.
@@ -90,14 +90,14 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
         :param goal: global goal.
         :return: local input state for the policy.
         """
-        # As there is no goal for balancing the cartpole we cannot calculate relative to the goal
+        # There is no goal/target for balancing the cartpole
         return state
 
     def reward(
             self,
-            state: np.array,
-            goal: np.array,
-            act: np.array,
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            act: torch.Tensor,
             ) -> float:
         """
         Computes the reward given the state, goal, and action.
