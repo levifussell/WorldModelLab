@@ -97,7 +97,8 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
         upright = (pole_angle_cosine + 1) / 2  # ~ how upright is the pole
 
-        centered = rewards.tolerance(cart_position, margin=2)
+        # centered = rewards.tolerance(cart_position, margin=2)  # Original setting used in control suite
+        centered = rewards.tolerance(cart_position, margin=1)  # Gets better results, more encouragement to stay central
         centered = (1 + centered) / 2  # ~ how centered is the cart (= how close to 0 is the cart position)
 
         small_velocity = rewards.tolerance(angular_vel, margin=5).min()

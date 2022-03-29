@@ -4,7 +4,7 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
 
     'seed'                      : 1234,
     'name'                      : 'cartpole_balance',
-    'device'                    : 'cuda',
+    'device'                    : 'cpu',
     'logdir'                    : 'runs/',
     'deep_stats'                : False,
 
@@ -16,7 +16,7 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
         # env.
 
     'env_steps_per_train'       : 8192,
-    'env_max_steps'             : 100,
+    'env_max_steps'             : 1000,
 
         # world model.
 
@@ -29,7 +29,7 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
 
     'wm_hid_units'              : 512, #1024,
     'wm_hid_layers'             : 2,
-    'wm_window'                 : 4,
+    'wm_window'                 : 8,
 
     'wm_l1_reg'                 : 0.0001, #0.01,
     'wm_l2_reg'                 : 0.0001, #0.001,
@@ -48,7 +48,7 @@ CARTPOLE_BALANCE_TRAIN_ARGS = {
 
     'po_hid_units'              : 512, #1024,
     'po_hid_layers'             : 2,
-    'po_window'                 : 32,
+    'po_window'                 : 128,
 
     'po_l1_reg'                 : 0.1,#0.01,
     'po_l2_reg'                 : 0.1,#0.001,
