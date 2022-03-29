@@ -4,57 +4,75 @@ from grpc import Call
 import torch
 import torch.nn as nn
 
-from utils.normalizer import Normalizer
+from ..utils.normalizer import Normalizer
+from ..utils.spectral_normalization import SpectralNorm
 
 class WorldModel(nn.Module):
 
     def __init__(
             self,
-            state_size: int,
+            state_input_size: int,
             action_size: int,
             hid_layers: list,
             fn_pre_process_state: Callable,
             fn_post_process_state: Callable,
             fn_pre_process_action: Callable,
             final_layer_scale: float = 0.1,
+            activation: str = 'lrelu',
+            use_spectral_normalization: bool = False,
+            state_output_size: int = -1,
             ) -> None:
         super(WorldModel, self).__init__()
 
-        self.normalizer_state = Normalizer(state_size)
+        if state_output_size == -1:
+            state_output_size = state_input_size
+
+        self.normalizer_state = Normalizer(state_input_size)
         self.normalizer_action = Normalizer(action_size)
-        self.normalizer_state_delta = Normalizer(state_size)
+        self.normalizer_state_delta = Normalizer(state_output_size)
 
         self.fn_pre_process_state = fn_pre_process_state
         self.fn_post_process_state = fn_post_process_state
         self.fn_pre_process_action = fn_pre_process_action
 
-        layers = [state_size + action_size]
+        layers = [state_input_size + action_size]
         layers.extend(hid_layers)
+
+        if use_spectral_normalization and activation != 'lrelu':
+            print("WARNING: using spectral norm without LeakyReLU might fail.")
 
         self.model = []
         for l1,l2 in zip(layers[:-1], layers[1:]):
-            self.model.append(nn.Linear(l1, l2))
-            self.model.append(nn.ELU())
 
-        self.model.append(nn.Linear(layers[-1], state_size))
-        self.model[-1].weight.data.mul_(final_layer_scale)
-        self.model[-1].bias.data.mul_(0.0)
+            if use_spectral_normalization:
+                self.model.append(SpectralNorm(nn.Linear(l1, l2)))
+            else:
+                self.model.append(nn.Linear(l1, l2))
+
+            if activation == 'lrelu':
+                self.model.append(nn.LeakyReLU(negative_slope=0.1))
+            elif activation == 'elu':
+                self.model.append(nn.ELU())
+            else:
+                raise Exception(f"{activation} is not a valid activation.")
+
+        if use_spectral_normalization:
+
+            self.model.append(SpectralNorm(nn.Linear(layers[-1], state_output_size)))
+            self.model[-1].module.weight_bar.data.mul_(final_layer_scale)
+            self.model[-1].module.bias.data.mul_(0.0)
+
+        else:
+
+            self.model.append(nn.Linear(layers[-1], state_output_size))
+            self.model[-1].weight.data.mul_(final_layer_scale)
+            self.model[-1].bias.data.mul_(0.0)
 
         self.model = nn.Sequential(*self.model)
 
     def _state_pre_process(self, state: torch.tensor) -> torch.tensor:
         return self.normalizer_state(self.fn_pre_process_state(state))
 
-    def _state_integrate_and_post_process(self, state_from: torch.tensor, state_delta: torch.tensor) -> torch.tensor:
-        """
-        Integrates the world model predictions forward.
-
-        :param state_from: the state the world model is predicting from.
-        :param state_delta: the change in state the world model has predicted.
-        :return: the predicted next state.
-        """
-        return self.fn_post_process_state(state_from + self.normalizer_state_delta.denormalize(state_delta))
-        
     def _action_pre_process(self, action: torch.tensor) -> torch.tensor:
         return self.normalizer_action(self.fn_pre_process_action(action))
 
@@ -83,7 +101,7 @@ class WorldModel(nn.Module):
         x = torch.cat([pre_state_start, pre_action], dim=-1)
 
         pred_resids = [self.model(x)]
-        pred_states = [self._state_integrate_and_post_process(state_from=state_start, state_delta=pred_resids[-1])]
+        pred_states = [self.fn_post_process_state(prev_global_state=state_start, state_delta=self.normalizer_state_delta.denormalize(pred_resids[-1]))]
 
         for i in range(1, window):
             
@@ -93,7 +111,7 @@ class WorldModel(nn.Module):
             x = torch.cat([pre_state_pred, pre_action], dim=-1)
 
             pred_resids.append(self.model(x))
-            pred_states.append(self._state_integrate_and_post_process(state_from=pred_states[-1], state_delta=pred_resids[-1]))
+            pred_states.append(self.fn_post_process_state(prev_global_state=pred_states[-1], state_delta=self.normalizer_state_delta.denormalize(pred_resids[-1])))
 
         pred_resids = torch.cat([t.unsqueeze(1) for t in pred_resids], dim=1)
         pred_states = torch.cat([t.unsqueeze(1) for t in pred_states], dim=1)

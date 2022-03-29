@@ -2,6 +2,7 @@ from fileinput import filename
 import os
 import platform
 from datetime import datetime
+from typing import Callable
 
 import numpy as np
 import torch
@@ -10,19 +11,21 @@ import torch.optim as opt
 from torch.utils.tensorboard import SummaryWriter
 from torchsummary import summary
 
-from training.policy import Policy
-from training.world_model import WorldModel
-from training.env_collector import EnvCollector
-from training.buffer import Buffer
-from training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
+from PIL import Image
 
-from env.reacher_dm_control_env import ReacherGoalEnv
-from env.reacher_train_args import REACHER_TRAIN_ARGS
-from env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
-from env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
+from src.training.policy import Policy
+from src.training.world_model import WorldModel
+from src.training.env_collector import EnvCollector
+from src.training.buffer import Buffer
+from src.training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
+
+from src.env.reacher_dm_control_env import ReacherGoalEnv
+from src.env.reacher_train_args import REACHER_TRAIN_ARGS
+from src.env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
+from src.env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
 
 def run(
-    env=None, train_args=DEFAULT_TRAIN_ARGS,
+    f_env: Callable = None, train_args=DEFAULT_TRAIN_ARGS,
 ):
 
     train_args = TrainArgs(train_args)
@@ -35,6 +38,8 @@ def run(
     torch.manual_seed(train_args.seed)
 
     """ Setup Environment/Gym """
+
+    env = f_env(render=train_args.save_renders)
 
     state_size = env.state_size
     goal_size = env.goal_size
@@ -73,12 +78,14 @@ def run(
     """ Build World Model"""
 
     world_model = WorldModel(
-                state_size=state_size,
+                state_input_size=state_size,
                 action_size=act_size,
                 hid_layers=[train_args.wm_hid_units] * train_args.wm_hid_layers,
                 fn_pre_process_state=env.preprocess_state_for_world_model,
                 fn_post_process_state=env.postprocess_state_for_world_model,
                 fn_pre_process_action=lambda x: x,
+                activation=train_args.wm_activation,
+                use_spectral_normalization=train_args.wm_use_spectral_norm,
                 ).to(train_args.device)
 
     world_model_opt = opt.RAdam(
@@ -106,10 +113,10 @@ def run(
                         min_env_steps=max(train_args.wm_window, train_args.po_window),
                         max_env_steps=train_args.env_max_steps,
                         exploration_std=train_args.po_env_exploration,
-                        normalizer_state=world_model.normalizer_state,
-                        normalizer_state_delta=world_model.normalizer_state_delta,
-                        normalizer_action=world_model.normalizer_action,
-                        normalizer_state_and_goal=policy.normalizer_state_and_goal,
+                        normalizer_wm_state=world_model.normalizer_state,
+                        normalizer_wm_state_delta=world_model.normalizer_state_delta,
+                        normalizer_wm_action=world_model.normalizer_action,
+                        normalizer_po_state_and_goal=policy.normalizer_state_and_goal,
                         is_parallel=False, # TODO: True for multiprocessing
                         collect_device='cpu',
                         train_device=train_args.device
@@ -139,7 +146,7 @@ def run(
         # collect environment.
 
         if not env_collector.is_parallel:
-            n_steps, n_eps, returns = env_collector.collect(train_args.env_steps_per_train)
+            n_steps, n_eps, returns, _ = env_collector.collect(train_args.env_steps_per_train)
 
             print(f"COLLECTED {n_steps} STEPS")
             print(f"COLLECTED {n_eps} EPISODES")
@@ -195,17 +202,17 @@ def run(
         writer.add_scalar('learning/policy_lr', result['po_lr'], global_step=e)
         writer.add_scalar('learning/world_model_lr', result['wm_lr'], global_step=e)
 
-        writer.add_scalar('inputs/state_scale_mean', env_collector.normalizer_state.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/state_scale_std', env_collector.normalizer_state.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_scale_mean', env_collector.normalizer_wm_state.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_scale_std', env_collector.normalizer_wm_state.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/state_delta_mean', env_collector.normalizer_state_delta.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/state_delta_std', env_collector.normalizer_state_delta.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_delta_mean', env_collector.normalizer_wm_state_delta.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_delta_std', env_collector.normalizer_wm_state_delta.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/act_scale_mean', env_collector.normalizer_action.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/act_scale_std', env_collector.normalizer_action.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/act_scale_mean', env_collector.normalizer_wm_action.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/act_scale_std', env_collector.normalizer_wm_action.accum_std.norm(p=2), global_step=e)
 
-        writer.add_scalar('inputs/state_and_goal_mean', env_collector.normalizer_state_and_goal.accum_mean.norm(p=2), global_step=e)
-        writer.add_scalar('inputs/state_and_goal_std', env_collector.normalizer_state_and_goal.accum_std.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_and_goal_mean', env_collector.normalizer_po_state_and_goal.accum_mean.norm(p=2), global_step=e)
+        writer.add_scalar('inputs/state_and_goal_std', env_collector.normalizer_po_state_and_goal.accum_std.norm(p=2), global_step=e)
 
         writer.add_scalar('models/po_weight_scale', result['po_weight_scale'], global_step=e)
         writer.add_scalar('models/po_weight_max', result['po_weight_max'], global_step=e)
@@ -247,22 +254,22 @@ def run(
 
             print("## BEST REWARD POLICY SAVED.")
 
-            #TEMP ---
-            # Reload the policy and determine that it matches.
+            # #TEMP ---
+            # # Reload the policy and determine that it matches.
 
-            temp_policy = Policy(
-                    input_size=po_input_size,
-                    action_size=act_size,
-                    hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
-                    fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
-                    fn_post_process_action=lambda x : x,
-                    )
-            temp_policy.load_from_path(filepath=os.path.join(filepath, f"best_{train_args.name}_rew_policy.pth"))
+            # temp_policy = Policy(
+            #         input_size=po_input_size,
+            #         action_size=act_size,
+            #         hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
+            #         fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
+            #         fn_post_process_action=lambda x : x,
+            #         )
+            # temp_policy.load_from_path(filepath=os.path.join(filepath, f"best_{train_args.name}_rew_policy.pth"))
 
-            for p,q in zip(env_collector.current_policy.parameters(), temp_policy.parameters()):
+            # for p,q in zip(env_collector.current_policy.parameters(), temp_policy.parameters()):
 
-                assert torch.sum(torch.abs(p.cpu().data - q.cpu().data)) == 0
-            #--------
+            #     assert torch.sum(torch.abs(p.cpu().data - q.cpu().data)) == 0
+            # #--------
 
         if result['po_loss_avg'] < best_po_loss:
 
@@ -275,7 +282,24 @@ def run(
 
             print("## BEST LOSS POLICY SAVED.")
 
+        # SAVE RENDERS.
+
+        if train_args.save_renders:
+
+            print("COLLECTING RENDER.")
+
+            n_steps, n_eps, returns, frame_renders = env_collector.collect(train_args.env_max_steps)
+
+            im_dir = os.path.join(log_path, "frame_renders", f"epoch_{e}")
+            os.makedirs(im_dir, exist_ok=True)
+
+            for i,f in enumerate(frame_renders):
+
+                im = Image.fromarray(f)
+                im.save(os.path.join(im_dir, f"frame_{i}.jpg"))
+
 if __name__ == "__main__":
 
-    run(ReacherGoalEnv(), REACHER_TRAIN_ARGS)
+    run(ReacherGoalEnv, REACHER_TRAIN_ARGS)
     # run(CartpoleBalanceGoalEnv(), CARTPOLE_BALANCE_TRAIN_ARGS)
+    # run(CartpoleBalanceGoalEnv(), REACHER_TRAIN_ARGS)

@@ -14,14 +14,18 @@ class GoalEnv(ABC):
     def __init__(
         self,
         env_gym,
+        render: bool = False
         ) -> None:
+
+        self.render = render
+        self.frames = []
 
         self._env_gym = env_gym
 
     @abstractmethod
     def get_curr_global_state_and_goal(
             self,
-            ) -> Tuple[np.array, np.array]:
+            ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Computes the global state and global goal of the environment.
 
@@ -32,8 +36,8 @@ class GoalEnv(ABC):
     @abstractmethod
     def preprocess_state_for_world_model(
             self, 
-            state: Union[np.array, torch.tensor]
-            ) -> np.array:
+            state: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the global state into a local state for the world model.
 
@@ -45,22 +49,40 @@ class GoalEnv(ABC):
     @abstractmethod
     def postprocess_state_for_world_model(
             self, 
-            state: Union[np.array, torch.tensor]
-            ) -> np.array:
+            prev_global_state: torch.Tensor,
+            state_delta: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the local state from the world model into the global state.
 
+        :param prev_global_state: previous global state of the world model.
         :param state: local world model state.
         :return: global state.
         """
         pass
 
     @abstractmethod
+    def compute_delta_state_world_model(
+            self, 
+            state_from: torch.Tensor,
+            state_to: torch.Tensor,
+            ) -> torch.Tensor:
+        """
+        Computes the difference between two states of the world model.
+        In general, this will just be a Euclidean difference.
+
+        :param state_from: state the world model came from.
+        :param state_to: state the world model arrived at.
+        :return: difference between two states.
+        """
+        pass
+
+    @abstractmethod
     def preprocess_state_and_goal_for_policy(
             self,
-            state: Union[np.array, torch.tensor],
-            goal: Union[np.array, torch.tensor],
-            ) -> np.array:
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            ) -> torch.Tensor:
         """
         Converts the global state and goal into a local input state for
             the policy.
@@ -74,9 +96,9 @@ class GoalEnv(ABC):
     @abstractmethod
     def reward(
             self,
-            state: np.array,
-            goal: np.array,
-            act: np.array,
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            act: torch.Tensor,
             ) -> float:
         """
         Computes the reward given the state, goal, and action.
@@ -86,7 +108,7 @@ class GoalEnv(ABC):
     @abstractmethod
     def step(
             self,
-            act: np.array,
+            act: torch.Tensor,
             ):
         """
         Takes a step in the environment.
@@ -114,20 +136,17 @@ class ControlSuiteGoalEnv(GoalEnv):
     def __init__(
             self,
             task_build_func: Callable,
-            max_steps: int = -1,
+            render: bool = False,
             ) -> None:
         """
         :param max_steps: maximium environment steps, usually for testing.
         """
-        super().__init__(env_gym=task_build_func())
+        super().__init__(env_gym=task_build_func(), render=render)
 
         self._physics = self._env_gym._physics
         self._task = self._env_gym.task
 
         self._env_gym._flat_observation = False  
-
-        self._max_steps = max_steps
-        self._nsteps = 0
 
     @property
     def action_size(self):
@@ -159,10 +178,10 @@ class ControlSuiteGoalEnv(GoalEnv):
 
     def step(
             self,
-            act: np.array,
+            act: torch.Tensor,
             ):
 
-        timestep = self._env_gym.step(act) 
+        timestep = self._env_gym.step(act.flatten().numpy()) 
 
         done = timestep.last()
 
@@ -170,10 +189,8 @@ class ControlSuiteGoalEnv(GoalEnv):
 
         info = {}
 
-        self._nsteps += 1
-
-        if self._max_steps > 0 and self._nsteps >= self._max_steps:
-            done = True
+        if self.render:
+            self.frames.append(self._physics.render(camera_id=0, height=200, width=200))
 
         return global_state, global_goal, done, info
 
@@ -184,5 +201,9 @@ class ControlSuiteGoalEnv(GoalEnv):
         # done = timestep.last()
 
         global_state, global_goal = self.get_curr_global_state_and_goal()
+
+        if self.render:
+            self.frames.clear()
+            self.frames.append(self._physics.render(camera_id=0, height=200, width=200))
 
         return global_state, global_goal #, done

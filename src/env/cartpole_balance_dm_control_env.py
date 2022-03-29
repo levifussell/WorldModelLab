@@ -51,7 +51,8 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
 
     def postprocess_state_for_world_model(
             self,
-            state: Union[np.array, torch.tensor]
+            prev_global_state: Union[np.array, torch.tensor],
+            state_delta: Union[np.array, torch.tensor],
             ) -> np.array:
         """
         Converts the local state from the world model into the global state.
@@ -59,7 +60,22 @@ class CartpoleBalanceGoalEnv(ControlSuiteGoalEnv):
         :param state: local world model state.
         :return: global state.
         """
-        return state
+        return prev_global_state + state_delta
+
+    def compute_delta_state_world_model(
+            self, 
+            state_from: Union[np.array, torch.tensor],
+            state_to: Union[np.array, torch.tensor],
+            ) -> np.array:
+        """
+        Computes the difference between two states of the world model.
+        In general, this will just be a Euclidean difference.
+
+        :param state_from: state the world model came from.
+        :param state_to: state the world model arrived at.
+        :return: difference between two states.
+        """
+        return state_to - state_from
 
     def preprocess_state_and_goal_for_policy(
             self,

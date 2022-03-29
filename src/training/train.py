@@ -1,3 +1,8 @@
+import os
+import sys
+
+curdir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.dirname(curdir))
 
 import numpy as np
 
@@ -11,7 +16,7 @@ from .env_collector import EnvCollector
 from .policy import Policy
 from .world_model import WorldModel
 
-from utils.utils import grad_layer_norm, compute_per_rollout_wm_gradient, compute_per_rollout_po_gradient
+from ..utils.utils import grad_layer_norm, compute_per_rollout_wm_gradient, compute_per_rollout_po_gradient
 
 DEFAULT_TRAIN_ARGS = {
 
@@ -140,6 +145,8 @@ def train_step(
 
     """Train World Model."""
 
+    world_model.train()
+
     def wm_loss_func(W_pred, W_targ, W_resids):
 
         assert W_pred.shape == W_targ.shape
@@ -227,6 +234,9 @@ def train_step(
 
 
     """Train Policy."""
+
+    world_model.eval()
+    policy.train()
 
     def po_loss_func(P_states, P_goals, P_actions):
 

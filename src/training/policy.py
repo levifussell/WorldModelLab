@@ -2,8 +2,9 @@ from typing import Callable, Union, Tuple
 
 import torch
 import torch.nn as nn
+from .world_model import WorldModel
 
-from utils.normalizer import Normalizer
+from ..utils.normalizer import Normalizer
 
 class Policy(nn.Module):
 

@@ -50,7 +50,8 @@ if __name__ == "__main__":
     act_size = env.action_size
     po_input_size = env.policy_input_size
 
-    po_filename = f"runs/models/best_{train_args.name}_rew_policy.pth"
+    # po_filename = f"runs/models/best_{train_args.name}_rew_policy.pth"
+    po_filename = f"runs/models/complete_{train_args.name}_rew_policy.pth"
 
     policy = Policy(
                 input_size=po_input_size,
