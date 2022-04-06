@@ -4,7 +4,8 @@ from grpc import Call
 import torch
 import torch.nn as nn
 
-from ..utils.normalizer import Normalizer
+# from ..utils.normalizer import Normalizer
+from ..utils.normalizer_batch import NormalizerBatch
 from ..utils.spectral_normalization import SpectralNorm
 
 class WorldModel(nn.Module):
@@ -27,9 +28,9 @@ class WorldModel(nn.Module):
         if state_output_size == -1:
             state_output_size = state_input_size
 
-        self.normalizer_state = Normalizer(state_input_size)
-        self.normalizer_action = Normalizer(action_size)
-        self.normalizer_state_delta = Normalizer(state_output_size)
+        self.normalizer_state = NormalizerBatch(state_input_size)
+        self.normalizer_action = NormalizerBatch(action_size)
+        self.normalizer_state_delta = NormalizerBatch(state_output_size)
 
         self.fn_pre_process_state = fn_pre_process_state
         self.fn_post_process_state = fn_post_process_state
@@ -101,7 +102,8 @@ class WorldModel(nn.Module):
         x = torch.cat([pre_state_start, pre_action], dim=-1)
 
         pred_resids = [self.model(x)]
-        pred_states = [self.fn_post_process_state(prev_global_state=state_start, state_delta=self.normalizer_state_delta.denormalize(pred_resids[-1]))]
+        # pred_states = [self.fn_post_process_state(prev_global_state=state_start, state_delta=self.normalizer_state_delta.denormalize(pred_resids[-1]))]
+        pred_states = [self.fn_post_process_state(prev_global_state=state_start, state_delta=self.normalizer_state_delta.descale(pred_resids[-1]))]
 
         for i in range(1, window):
             
@@ -111,7 +113,8 @@ class WorldModel(nn.Module):
             x = torch.cat([pre_state_pred, pre_action], dim=-1)
 
             pred_resids.append(self.model(x))
-            pred_states.append(self.fn_post_process_state(prev_global_state=pred_states[-1], state_delta=self.normalizer_state_delta.denormalize(pred_resids[-1])))
+            # pred_states.append(self.fn_post_process_state(prev_global_state=pred_states[-1], state_delta=self.normalizer_state_delta.denormalize(pred_resids[-1])))
+            pred_states.append(self.fn_post_process_state(prev_global_state=pred_states[-1], state_delta=self.normalizer_state_delta.descale(pred_resids[-1])))
 
         pred_resids = torch.cat([t.unsqueeze(1) for t in pred_resids], dim=1)
         pred_states = torch.cat([t.unsqueeze(1) for t in pred_states], dim=1)

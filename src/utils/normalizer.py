@@ -9,17 +9,17 @@ class Normalizer(nn.Module):
         super().__init__()
 
         self.n = 0
-        self.accum_mean = nn.parameter.Parameter(torch.zeros(length), requires_grad=False)
+        self.accum_mean = nn.parameter.Parameter(torch.zeros(1, length), requires_grad=False)
         self._accum_S = torch.zeros(length)
-        self.accum_std = nn.parameter.Parameter(torch.ones(length), requires_grad=False)
+        self.accum_std = nn.parameter.Parameter(torch.ones(1, length), requires_grad=False)
 
         # self.accum_rate = accum_rate
 
     def warmup(self, batch: torch.tensor):
 
         self.n += batch.shape[0]
-        self.accum_mean.data = torch.mean(batch, 0)
-        self.accum_std.data = torch.std(batch, 0)
+        self.accum_mean.data = torch.mean(batch, 0, keepdim=True)
+        self.accum_std.data = torch.std(batch, 0, keepdim=True)
         self._accum_S = torch.square(self.accum_std) * self.n
 
     def __iadd__(self, value: torch.tensor):
@@ -42,7 +42,13 @@ class Normalizer(nn.Module):
 
             self._accum_S += (value - old_mean) * (value - self.accum_mean)
 
-            self.accum_std.data = torch.sqrt(self._accum_S / self.n)
+            low_stds = torch.abs(self._accum_S) < 1e-6
+            self.accum_std.data[~low_stds] = torch.sqrt(self._accum_S[~low_stds] / self.n)
+            self.accum_std.data[low_stds] = 1.0
+
+            if torch.any(torch.isnan(self.accum_std)):
+                import pdb; pdb.set_trace()
+                print("STAT")
 
         return self
 

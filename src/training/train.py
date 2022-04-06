@@ -317,7 +317,8 @@ def train_step(
 
         # po_loss = po_reward_loss + po_l1_reg_loss + po_l2_reg_loss
 
-        po_loss, (po_reward_loss, po_l1_reg_loss, po_l2_reg_loss) = po_loss_func(P_state, B_goal[:, 1:], P_action)
+            # NOTE: we want to compare the loss of the NEXT state with the PREVIOUS goal.
+        po_loss, (po_reward_loss, po_l1_reg_loss, po_l2_reg_loss) = po_loss_func(P_state, B_goal[:, :-1], P_action)
 
         po_loss.backward()
 

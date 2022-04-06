@@ -2,7 +2,7 @@ from typing import Tuple, Union
 import numpy as np
 import torch
 
-from env.goal_env import ControlSuiteGoalEnv
+from env.control_suite_goal_env import ControlSuiteGoalEnv
 from utils import rewards
 
 from dm_control.suite.cartpole import balance as build_cartpole_balance

@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 from .world_model import WorldModel
 
-from ..utils.normalizer import Normalizer
+# from ..utils.normalizer import Normalizer
+from ..utils.normalizer_batch import NormalizerBatch
 
 class Policy(nn.Module):
 
@@ -21,7 +22,7 @@ class Policy(nn.Module):
 
         self.action_size = action_size
 
-        self.normalizer_state_and_goal = Normalizer(input_size)
+        self.normalizer_state_and_goal = NormalizerBatch(input_size)
 
         self.fn_combine_state_and_goal = fn_combine_state_and_goal
         self.fn_post_process_action = fn_post_process_action
@@ -39,6 +40,8 @@ class Policy(nn.Module):
         self.model[-1].bias.data.mul_(0.0)
 
         self.model = nn.Sequential(*self.model)
+
+        self.device = 'cpu'
 
     def _state_and_goal_preprocess(
             self,
@@ -118,3 +121,10 @@ class Policy(nn.Module):
 
         state_dict = torch.load(filepath, map_location='cpu')
         self.load_state_dict(state_dict)
+
+    def to(self, device, *args, **kwargs):
+
+        self.device = device
+
+        return super().to(device, *args, **kwargs)
+

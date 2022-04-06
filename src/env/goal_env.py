@@ -5,31 +5,25 @@ import torch
 
 from abc import ABC, abstractclassmethod, abstractmethod
 
-class GoalEnv(ABC):
+class GoalEnvDataProcessor(ABC):
     """
     Abstract class.
-    Wraps the env to allow for a 'goal' channel.
+    Performs the post/pre-processing of the data.
     """
 
-    def __init__(
-        self,
-        env_gym,
-        render: bool = False
-        ) -> None:
-
-        self.render = render
-        self.frames = []
-
-        self._env_gym = env_gym
-
     @abstractmethod
-    def get_curr_global_state_and_goal(
+    def preprocess_state_and_goal_for_policy(
             self,
-            ) -> Tuple[torch.Tensor, torch.Tensor]:
+            state: torch.Tensor,
+            goal: torch.Tensor,
+            ) -> torch.Tensor:
         """
-        Computes the global state and global goal of the environment.
+        Converts the global state and goal into a local input state for
+            the policy.
 
-        :return: a tuple of the state and goal.
+        :param state: global state.
+        :param goal: global goal.
+        :return: local input state for the policy.
         """
         pass
 
@@ -78,23 +72,7 @@ class GoalEnv(ABC):
         pass
 
     @abstractmethod
-    def preprocess_state_and_goal_for_policy(
-            self,
-            state: torch.Tensor,
-            goal: torch.Tensor,
-            ) -> torch.Tensor:
-        """
-        Converts the global state and goal into a local input state for
-            the policy.
-
-        :param state: global state.
-        :param goal: global goal.
-        :return: local input state for the policy.
-        """
-        pass
-
-    @abstractmethod
-    def reward(
+    def compute_reward(
             self,
             state: torch.Tensor,
             goal: torch.Tensor,
@@ -102,6 +80,37 @@ class GoalEnv(ABC):
             ) -> float:
         """
         Computes the reward given the state, goal, and action.
+        """
+        pass
+
+
+class GoalEnv(ABC):
+    """
+    Abstract class.
+    Wraps the env to allow for a 'goal' channel.
+    """
+
+    def __init__(
+        self,
+        env_gym,
+        data_preprocessor: GoalEnvDataProcessor,
+        render: bool = False
+        ) -> None:
+
+        self.render = render
+        self.frames = []
+
+        self._env_gym = env_gym
+        self._data_processor = data_preprocessor
+
+    @abstractmethod
+    def get_curr_global_state_and_goal(
+            self,
+            ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Computes the global state and global goal of the environment.
+
+        :return: a tuple of the state and goal.
         """
         pass
 
@@ -126,84 +135,3 @@ class GoalEnv(ABC):
         :return: env timestep.
         """
         pass
-
-class ControlSuiteGoalEnv(GoalEnv):
-    """
-    Abstract class.
-    Wraps the DeepMind Control Suite gyms.
-    """
-
-    def __init__(
-            self,
-            task_build_func: Callable,
-            render: bool = False,
-            ) -> None:
-        """
-        :param max_steps: maximium environment steps, usually for testing.
-        """
-        super().__init__(env_gym=task_build_func(), render=render)
-
-        self._physics = self._env_gym._physics
-        self._task = self._env_gym.task
-
-        self._env_gym._flat_observation = False  
-
-    @property
-    def action_size(self):
-        return self._env_gym.action_spec().shape[-1]
-
-    @property
-    def action_min(self):
-        return self._env_gym.action_spec().minimum
-
-    @property
-    def action_max(self):
-        return self._env_gym.action_spec().maximum
-
-    @property
-    def state_size(self):
-        state, goal = self.get_curr_global_state_and_goal()
-        return state.shape[-1]
-
-    @property
-    def goal_size(self):
-        state, goal = self.get_curr_global_state_and_goal()
-        return goal.shape[-1]
-
-    @property
-    def policy_input_size(self):
-        state, goal = self.get_curr_global_state_and_goal()
-        policy_input = self.preprocess_state_and_goal_for_policy(state, goal)
-        return policy_input.shape[-1]
-
-    def step(
-            self,
-            act: torch.Tensor,
-            ):
-
-        timestep = self._env_gym.step(act.flatten().numpy()) 
-
-        done = timestep.last()
-
-        global_state, global_goal = self.get_curr_global_state_and_goal()
-
-        info = {}
-
-        if self.render:
-            self.frames.append(self._physics.render(camera_id=0, height=200, width=200))
-
-        return global_state, global_goal, done, info
-
-    def reset(self):
-
-        timestep = self._env_gym.reset()
-
-        # done = timestep.last()
-
-        global_state, global_goal = self.get_curr_global_state_and_goal()
-
-        if self.render:
-            self.frames.clear()
-            self.frames.append(self._physics.render(camera_id=0, height=200, width=200))
-
-        return global_state, global_goal #, done

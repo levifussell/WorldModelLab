@@ -74,6 +74,9 @@ class Buffer:
             ) -> None:
 
         valid_indices = []
+
+        # manually add the first range.
+        valid_indices.append(np.arange(0, self.end_index[0] - window_size + 1, step=1))
         
         for e_srt, e_end in zip(self.end_index[:-1], self.end_index[1:]):
 

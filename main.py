@@ -4,6 +4,8 @@ import platform
 from datetime import datetime
 from typing import Callable
 
+import time
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchsummary import summary
 
 from PIL import Image
+from src.env.goal_env import GoalEnvDataProcessor
 
 from src.training.policy import Policy
 from src.training.world_model import WorldModel
@@ -19,13 +22,15 @@ from src.training.env_collector import EnvCollector
 from src.training.buffer import Buffer
 from src.training.train import train_step, TrainArgs, DEFAULT_TRAIN_ARGS
 
-from src.env.reacher_dm_control_env import ReacherGoalEnv
+from src.env.reacher_dm_control_env import ReacherGoalEnv, ReacherGoalEnvDataProcessor
 from src.env.reacher_train_args import REACHER_TRAIN_ARGS
 from src.env.cartpole_balance_dm_control_env import CartpoleBalanceGoalEnv
 from src.env.cartpole_balance_train_args import CARTPOLE_BALANCE_TRAIN_ARGS
 
 def run(
-    f_env: Callable = None, train_args=DEFAULT_TRAIN_ARGS,
+    f_env: Callable = None, 
+    f_env_data_processor: Callable = None, 
+    train_args: dict = DEFAULT_TRAIN_ARGS,
 ):
 
     train_args = TrainArgs(train_args)
@@ -37,14 +42,22 @@ def run(
     np.random.seed(train_args.seed)
     torch.manual_seed(train_args.seed)
 
-    """ Setup Environment/Gym """
+    """ Build Env Data Processor """
 
-    env = f_env(render=train_args.save_renders)
+    env_data_processor: GoalEnvDataProcessor = f_env_data_processor()
 
-    state_size = env.state_size
-    goal_size = env.goal_size
-    act_size = env.action_size
-    po_input_size = env.policy_input_size
+    """ Get Environment/Gym Data """
+
+    ff_env = lambda : f_env(data_processor=env_data_processor, render=train_args.save_renders)
+
+    temp_env = ff_env()
+
+    state_size = temp_env.state_size
+    goal_size = temp_env.goal_size
+    act_size = temp_env.action_size
+    po_input_size = temp_env.policy_input_size
+
+    del temp_env
 
     """ Logging """
 
@@ -57,11 +70,19 @@ def run(
 
     """ Build Policy """
 
+    policy_kwargs = dict(
+                input_size=po_input_size,
+                action_size=act_size,
+                hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
+                )
+
     policy = Policy(
                 input_size=po_input_size,
                 action_size=act_size,
                 hid_layers=[train_args.po_hid_units] * train_args.po_hid_layers,
-                fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
+                # fn_combine_state_and_goal=env.preprocess_state_and_goal_for_policy,
+                # fn_combine_state_and_goal=None,
+                fn_combine_state_and_goal=env_data_processor.preprocess_state_and_goal_for_policy,
                 fn_post_process_action=lambda x : x,
                 ).to(train_args.device)
 
@@ -73,7 +94,7 @@ def run(
                     optimizer=policy_opt,
                     lr_lambda=lambda epoch: 1 - epoch / train_args.epochs)
 
-    summary(policy, input_size=[(state_size,), (goal_size,)])
+    # summary(policy, input_size=[(state_size,), (goal_size,)])
 
     """ Build World Model"""
 
@@ -81,8 +102,12 @@ def run(
                 state_input_size=state_size,
                 action_size=act_size,
                 hid_layers=[train_args.wm_hid_units] * train_args.wm_hid_layers,
-                fn_pre_process_state=env.preprocess_state_for_world_model,
-                fn_post_process_state=env.postprocess_state_for_world_model,
+                # fn_pre_process_state=env.preprocess_state_for_world_model,
+                # fn_post_process_state=env.postprocess_state_for_world_model,
+                # fn_pre_process_state=None,
+                # fn_post_process_state=None,
+                fn_pre_process_state=env_data_processor.preprocess_state_for_world_model,
+                fn_post_process_state=env_data_processor.postprocess_state_for_world_model,
                 fn_pre_process_action=lambda x: x,
                 activation=train_args.wm_activation,
                 use_spectral_normalization=train_args.wm_use_spectral_norm,
@@ -96,7 +121,7 @@ def run(
                     optimizer=world_model_opt,
                     lr_lambda=lambda epoch: 1 - epoch / train_args.epochs)
 
-    summary(world_model, input_size=[(state_size,), (act_size,)])
+    # summary(world_model, input_size=[(state_size,), (act_size,)])
 
     """ Build EnvCollector """
 
@@ -108,7 +133,10 @@ def run(
                 )
 
     env_collector = EnvCollector(
-                        env=env,
+                        f_env_builder=ff_env,
+                        env_data_processor=env_data_processor,
+                        policy=policy,
+                        policy_kwargs=policy_kwargs,
                         buffer=buffer,
                         min_env_steps=max(train_args.wm_window, train_args.po_window),
                         max_env_steps=train_args.env_max_steps,
@@ -117,7 +145,7 @@ def run(
                         normalizer_wm_state_delta=world_model.normalizer_state_delta,
                         normalizer_wm_action=world_model.normalizer_action,
                         normalizer_po_state_and_goal=policy.normalizer_state_and_goal,
-                        is_parallel=False, # TODO: True for multiprocessing
+                        n_workers=4,
                         collect_device='cpu',
                         train_device=train_args.device
                         )
@@ -129,14 +157,12 @@ def run(
 
     print(f"BUFFER SIZE: {len(buffer)}")
 
-    print("WARMING UP NORMALIZER...")
-    env_collector.warmup_normalizer(warmup_steps=train_args.env_steps_per_train)
+    print("WARMING UP NORMALIZER AND BUFFER...")
+    # env_collector.warmup_normalizer(warmup_steps=train_args.env_steps_per_train)
+    env_collector.collect_nsteps(train_args.env_steps_per_train, use_policy=False, update_normalizers=True)
     print("...WARMUP COMPLETE.")
 
     """ Train Loop """
-
-        # start the gym process.
-    # env_collector.start_gym_process()
 
     best_po_loss = float('+inf')
     best_avg_rew = float('-inf')
@@ -145,12 +171,15 @@ def run(
 
         # collect environment.
 
-        if not env_collector.is_parallel:
-            n_steps, n_eps, returns, _ = env_collector.collect(train_args.env_steps_per_train)
+        # n_steps, n_eps, returns, _ = env_collector.collect(train_args.env_steps_per_train)
+        env_collect_start_sec = time.perf_counter()
+        n_steps, n_eps, returns = env_collector.collect_nsteps(train_args.env_steps_per_train, use_policy=True, update_normalizers=False)
+        env_collet_total_sec = time.perf_counter() - env_collect_start_sec
 
-            print(f"COLLECTED {n_steps} STEPS")
-            print(f"COLLECTED {n_eps} EPISODES")
-            print(f"BUFFER {env_collector.buffer.percent_filled}\% FILLED")
+        print(f"COLLECTED {n_steps} STEPS")
+        print(f"COLLECTED {n_eps} EPISODES")
+        print(f"TIME {env_collect_start_sec}s")
+        print(f"BUFFER {env_collector.buffer.percent_filled}\% FILLED")
 
         # train.
 
@@ -165,7 +194,7 @@ def run(
             world_model_opt=world_model_opt,
             world_model_opt_sched=world_model_opt_sched,
 
-            reward_func=env.reward,
+            reward_func=env_data_processor.compute_reward,
             train_args=train_args,
             )
 
@@ -233,6 +262,11 @@ def run(
         writer.add_scalar('buffer/nsteps_collected', n_steps, global_step=e)
         writer.add_scalar('buffer/neps_collected', n_eps, global_step=e)
 
+        writer.add_scalar('time/collection_time', env_collet_total_sec, global_step=e)
+        writer.add_scalar('time/episodes_per_second', float(n_eps) / float(env_collet_total_sec), global_step=e)
+        writer.add_scalar('time/seconds_per_episode', float(env_collet_total_sec) / float(n_eps), global_step=e)
+        writer.add_scalar('time/steps_per_second', float(n_steps) / float(env_collet_total_sec), global_step=e)
+
         if train_args.deep_stats:
 
             for w in range(train_args.wm_window - 1):
@@ -284,22 +318,22 @@ def run(
 
         # SAVE RENDERS.
 
-        if train_args.save_renders:
+        # if train_args.save_renders:
 
-            print("COLLECTING RENDER.")
+        #     print("COLLECTING RENDER.")
 
-            n_steps, n_eps, returns, frame_renders = env_collector.collect(train_args.env_max_steps)
+        #     n_steps, n_eps, returns, frame_renders = env_collector.collect(train_args.env_max_steps)
 
-            im_dir = os.path.join(log_path, "frame_renders", f"epoch_{e}")
-            os.makedirs(im_dir, exist_ok=True)
+        #     im_dir = os.path.join(log_path, "frame_renders", f"epoch_{e}")
+        #     os.makedirs(im_dir, exist_ok=True)
 
-            for i,f in enumerate(frame_renders):
+        #     for i,f in enumerate(frame_renders):
 
-                im = Image.fromarray(f)
-                im.save(os.path.join(im_dir, f"frame_{i}.jpg"))
+        #         im = Image.fromarray(f)
+        #         im.save(os.path.join(im_dir, f"frame_{i}.jpg"))
 
 if __name__ == "__main__":
 
-    run(ReacherGoalEnv, REACHER_TRAIN_ARGS)
+    run(ReacherGoalEnv, ReacherGoalEnvDataProcessor, REACHER_TRAIN_ARGS)
     # run(CartpoleBalanceGoalEnv(), CARTPOLE_BALANCE_TRAIN_ARGS)
     # run(CartpoleBalanceGoalEnv(), REACHER_TRAIN_ARGS)

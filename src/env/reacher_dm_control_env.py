@@ -5,7 +5,8 @@ import os
 import numpy as np
 import torch
 
-from env.goal_env import ControlSuiteGoalEnv
+from env.control_suite_goal_env import ControlSuiteGoalEnv
+from env.goal_env import GoalEnvDataProcessor
 # from goal_env import ControlSuiteGoalEnv
 
 from dm_control.mujoco.wrapper.core import MjModel
@@ -22,40 +23,8 @@ from dm_control.utils import io as resources
 
 class ReacherGoalEnv(ControlSuiteGoalEnv):
 
-    def __init__(self, render: bool = False):
-
-        # def wm_reacher(**environment_kwargs):
-        #     # physics = Physics.from_xml_string("./env/model_files/reacher.xml", common.ASSETS)
-        #     # physics = Physics.from_xml_string(common.read_model("reacher.xml"), common.ASSETS)
-        #     physics = Physics.from_xml_string(resources.GetResource(os.path.join('env', 'model_files', 'reacher.xml')), common.ASSETS)
-        #     task = Reacher(target_size=_BIG_TARGET, random=None)
-        #     environment_kwargs = environment_kwargs or {}
-        #     return control.Environment(
-        #         physics, task, time_limit=_DEFAULT_TIME_LIMIT, **environment_kwargs)
-
-        super().__init__(task_build_func=build_reacher_task, render=render)
-        # super().__init__(task_build_func=wm_reacher)
-
-        # # import pdb; pdb.set_trace()
-
-        # # p = mujoco.Physics()
-        # # # p.model.
-        # # m = MjModel()
-
-        # print(os.curdir)
-
-        # mjcf_model = mjcf.from_path(os.path.join('.', 'env', 'model_files', 'reacher.xml'))
-        # arm = mjcf_model.find('body', 'arm')
-        # arm.name = 'test'
-        # # mjcf_model = mjcf.RootElement()
-        # # mjcf_model.attach(self._physics.model)
-        # # mjcf_model.
-        # # mjcf_model.worldbody.add('geom', type='cylinder', size=[0.25, 0.02], rgba=[1, 0, 0, 1])
-        # # p = mujoco.Physics()
-        # # p.model
-        # # print(self._physics.model.attach)
-
-        # import pdb; pdb.set_trace()
+    def __init__(self, data_processor: GoalEnvDataProcessor, render: bool = False):
+        super().__init__(task_build_func=build_reacher_task, data_processor=data_processor, render=render)
 
     def get_curr_global_state_and_goal(
             self,
@@ -75,25 +44,10 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
         return state, goal
 
-    def preprocess_state_for_world_model(
-            self, 
-            state: torch.Tensor,
-            ) -> torch.Tensor:
-        return state
-
-    def postprocess_state_for_world_model(
-            self, 
-            prev_global_state: torch.Tensor,
-            state_delta: torch.Tensor,
-            ) -> torch.Tensor:
-        return prev_global_state + state_delta
-
-    def compute_delta_state_world_model(
-            self, 
-            state_from: torch.Tensor,
-            state_to: torch.Tensor,
-            ) -> torch.Tensor:
-        return state_to - state_from
+class ReacherGoalEnvDataProcessor(GoalEnvDataProcessor):
+    """
+    Performs the post/pre-processing of the data for the Reacher Goal Env.
+    """
 
     def preprocess_state_and_goal_for_policy(
             self,
@@ -110,7 +64,29 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
 
         return torch.cat([joint_angs, to_target, joint_vels], dim=-1)
 
-    def reward(
+    def preprocess_state_for_world_model(
+            self, 
+            state: torch.Tensor,
+            ) -> torch.Tensor:
+
+        return state
+
+    def postprocess_state_for_world_model(
+            self, 
+            prev_global_state: torch.Tensor,
+            state_delta: torch.Tensor,
+            ) -> torch.Tensor:
+
+        return prev_global_state + state_delta
+
+    def compute_delta_state_world_model(
+            self, 
+            state_from: torch.Tensor,
+            state_to: torch.Tensor,
+            ) -> torch.Tensor:
+        return state_to - state_from
+
+    def compute_reward(
             self, 
             state: torch.Tensor,
             goal: torch.Tensor,
@@ -118,7 +94,7 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
             ) -> float:
 
         finger_pos = state[...,:2]
-        radii = self._physics.named.model.geom_size[['target', 'finger'], 0].sum()
+        # radii = self._physics.named.model.geom_size[['target', 'finger'], 0].sum()
 
         finger_to_target_dist = torch.norm(goal[...,:2] - finger_pos, p=2, dim=-1)
         # return (finger_to_target_dist e= radii).float()
@@ -126,6 +102,7 @@ class ReacherGoalEnv(ControlSuiteGoalEnv):
         # return torch.clamp(finger_to_target_dist, min=0, max=radii) #/ radii
         # return 1.0 / (finger_to_target_dist + 0.1) #/ radii
         return torch.exp(-10.0 * finger_to_target_dist) #/ radii
+        # return torch.exp(-5.0 * finger_to_target_dist) #/ radii
 
 if __name__ == "__main__":
 

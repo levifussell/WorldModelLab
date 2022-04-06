@@ -17,7 +17,7 @@ REACHER_TRAIN_ARGS = {
         # env.
 
     'env_steps_per_train'       : 8192,
-    'env_max_steps'             : 256,
+    'env_max_steps'             : 128,
 
         # world model.
 
@@ -32,8 +32,8 @@ REACHER_TRAIN_ARGS = {
     'wm_hid_layers'             : 2,
     'wm_window'                 : 4,
 
-    'wm_l1_reg'                 : 0.0001,
-    'wm_l2_reg'                 : 0.0001,
+    'wm_l1_reg'                 : 0.01,
+    'wm_l2_reg'                 : 0.01,
 
     'wm_activation'             : 'elu',
     'wm_use_spectral_norm'      : False,
